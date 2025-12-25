@@ -1,5 +1,5 @@
 // js/config.js
-const API = "https://modernschool-chatbot-587062542199.asia-south1.run.app"; // Cloud Run URL
+const API = "https://msss-backend-961983851669.asia-south1.run.app"; // Cloud Run URL
 
 // Function to send a chat message to backend
 async function sendMessage(userMessage, chatHistory = []) {
