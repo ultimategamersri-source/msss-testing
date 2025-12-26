@@ -211,7 +211,7 @@ app = FastAPI(title="MSSS Backend", version="1.0.0")
 # ----------------------
 # CORS setup (Netlify + Local)
 # ----------------------
-allowed_origins = ["https://modernschooltesting.netlify.app"]
+allowed_origins = ["https://modernschooltesting.netlify.app","https://schooltesting3.netlify.app"]
 
 log.info(f"🔐 CORS allow_origins = {allowed_origins}")
 
