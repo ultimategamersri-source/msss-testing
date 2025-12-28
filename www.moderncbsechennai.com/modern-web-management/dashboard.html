@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Modern School Dashboard</title>
-<link rel="stylesheet" href="db.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Modern School Dashboard</title>
+  <link rel="stylesheet" href="db.css">
 </head>
 <body>
 
@@ -13,31 +13,39 @@
   <div id="passwordBox">
     <h2>Enter Dashboard Password</h2>
     <input type="password" id="dashboardPassword" placeholder="Enter Password">
-    <button onclick="checkPassword()">Enter</button>
+    <div style="display:flex; gap:8px; justify-content:center; margin-top:12px;">
+      <button id="enterBtn">Enter</button>
+      <button id="demoBtn">Demo</button>
+    </div>
     <p id="passwordError"></p>
   </div>
 </div>
 
 <!-- ===== DASHBOARD CONTAINER ===== -->
-<div id="dashboardContainer" style="display:none; height:100vh; display:flex; flex-direction:row; font-family: 'Segoe UI', sans-serif;">
-  
+<div id="dashboardContainer" class="blurred">
+
   <!-- ===== LEFT FILES TITLES VIEWER ===== -->
-  <div id="titlesViewer" style="width:300px; border-right:3px solid #ccc; overflow-y:auto; background:linear-gradient(180deg,#ffeaa7,#fab1a0);">
-    <div id="fileListHeader" style="padding:10px; font-weight:bold; text-align:center; color:#2d3436;">Files <button onclick="addFile()" style="float:right; background:#6c5ce7; color:#fff; border:none; border-radius:50%; width:25px; height:25px; cursor:pointer;">+</button></div>
+  <aside id="titlesViewer" class="sidebar">
+    <div class="sidebar-header">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <div style="font-weight:800; font-size:18px; color:#2d3436;">Projects</div>
+        <button id="addFileTop" class="addFileBtn" title="Add file">＋</button>
+      </div>
+      <input type="text" id="searchFiles" placeholder="Search files...">
+    </div>
+
     <div id="fileList"></div>
-    <input type="text" id="searchFiles" placeholder="Search files..." style="width:90%; margin:10px; padding:5px; border-radius:10px; border:1px solid #ccc;">
-  </div>
+
+    <div style="padding:12px;">
+      <button id="addFileBottom" class="addFileBtn">Add New File</button>
+    </div>
+  </aside>
 
   <!-- ===== RIGHT MAIN CONTENT VIEW ===== -->
-  <div id="mainContent" style="flex:1; padding:20px; overflow-y:auto; background: linear-gradient(180deg,#dfe6e9,#b2bec3);">
+  <main id="mainContent" class="mainContent">
     <h2 id="activeFileTitle">Select a file to view/edit</h2>
-    <textarea id="editor" style="width:100%; height:70vh; border-radius:10px; padding:10px; font-family:monospace; font-size:14px; border:2px solid #636e72;"></textarea>
-    <div style="margin-top:10px;">
-      <button onclick="saveFile()" style="padding:8px 15px; margin-right:5px; background:#00b894; color:#fff; border:none; border-radius:8px; cursor:pointer;">Save</button>
-      <button onclick="deleteFile(window.activeFile)" style="padding:8px 15px; margin-right:5px; background:#d63031; color:#fff; border:none; border-radius:8px; cursor:pointer;">Delete</button>
-      <button onclick="renameFile(window.activeFile)" style="padding:8px 15px; background:#0984e3; color:#fff; border:none; border-radius:8px; cursor:pointer;">Rename</button>
-    </div>
-  </div>
+    <div id="blocksContainer"></div>
+  </main>
 
 </div>
 

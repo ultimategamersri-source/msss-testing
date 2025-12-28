@@ -6,184 +6,228 @@ const DASHBOARD_PASSWORD = "modernSchool2025";
 function checkPassword() {
   const pass = document.getElementById("dashboardPassword").value;
   if(pass === DASHBOARD_PASSWORD){
-    document.getElementById("passwordOverlay").style.display = "none";
-    document.getElementById("dashboardContainer").style.display = "flex";
-    loadFiles();
-  } else {
-    document.getElementById("passwordError").textContent = "Incorrect password!";
-  }
-}
+    const API_BASE = "https://msss-backend-961983851669.asia-south1.run.app";
 
-// === FILE LIST ===
-let filesData = [];
+    // === State ===
+    let filesData = [];
 
-async function loadFiles() {
-  try{
-    const res = await fetch(`${API_BASE}/files`);
-    const data = await res.json();
-    filesData = data.files || [];
-    renderFileList();
-  }catch(err){
-    console.error(err);
-    document.getElementById("fileList").innerHTML = "Failed to load files.";
-  }
-}
+    // UTIL: show error
+    function showPasswordError(msg){
+      const err = document.getElementById('passwordError');
+      err.textContent = msg;
+    }
 
-function renderFileList() {
-  const list = document.getElementById("fileList");
-  list.innerHTML = "";
-  filesData.forEach(f => {
-    const div = document.createElement("div");
-    div.textContent = f;
-    div.className = "file-item";
-    div.onclick = () => openFile(f);
-    
-    // Long press rename
-    let pressTimer;
-    div.onmousedown = () => pressTimer = setTimeout(()=>renameFileSidebar(f, div), 800);
-    div.onmouseup = div.onmouseleave = () => clearTimeout(pressTimer);
+    // PASSWORD: verify with backend /auth-check
+    async function checkPassword() {
+      const pass = document.getElementById('dashboardPassword').value.trim();
+      showPasswordError('');
+      try{
+        const res = await fetch(`${API_BASE}/auth-check`, {
+          method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ password: pass })
+        });
+        const j = await res.json();
+        if(j && j.success){
+          document.getElementById('passwordOverlay').style.display = 'none';
+          document.getElementById('dashboardContainer').classList.remove('blurred');
+          await loadFiles();
+        } else {
+          showPasswordError('Incorrect password.');
+          document.getElementById('dashboardPassword').value = '';
+        }
+      }catch(err){
+        console.error(err);
+        showPasswordError('Auth check failed.');
+      }
+    }
 
-    list.appendChild(div);
-  });
-}
+    // Demo button for local quick view (no auth) - still loads files if backend allows
+    async function demoAccess(){
+      document.getElementById('passwordOverlay').style.display = 'none';
+      document.getElementById('dashboardContainer').classList.remove('blurred');
+      await loadFiles();
+    }
 
-// Sidebar search
-function filterFiles() {
-  const query = document.getElementById("searchFiles").value.toLowerCase();
-  const filtered = filesData.filter(f => f.toLowerCase().includes(query));
-  const list = document.getElementById("fileList");
-  list.innerHTML = "";
-  filtered.forEach(f => {
-    const div = document.createElement("div");
-    div.textContent = f;
-    div.className = "file-item";
-    div.onclick = () => openFile(f);
-    list.appendChild(div);
-  });
-}
+    // Load files from API
+    async function loadFiles(){
+      const listEl = document.getElementById('fileList');
+      listEl.innerHTML = 'Loading...';
+      try{
+        const res = await fetch(`${API_BASE}/files`);
+        const data = await res.json();
+        filesData = Array.isArray(data) ? data : (data.files || []);
+        renderFileList();
+      }catch(err){
+        console.error(err);
+        listEl.innerHTML = 'Failed to load files.';
+      }
+    }
 
-// OPEN FILE
-async function openFile(name) {
-  try {
-    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(name)}`);
-    const data = await res.json();
-    addFileBlock(name, data.content);
-  } catch(err){
-    console.error(err);
-    alert("Failed to load file");
-  }
-}
+    // Render files in sidebar
+    function renderFileList(){
+      const list = document.getElementById('fileList');
+      list.innerHTML = '';
+      filesData.forEach((f, i) => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.dataset.filename = f;
+        item.innerHTML = `<div class="titleWrap"><span class="fileTitle">${escapeHtml(f)}</span></div>`;
+        item.onclick = () => openFile(f);
 
-// ADD FILE BLOCK TO MAIN CONTENT
-function addFileBlock(name, content){
-  const main = document.getElementById("mainContent");
-  const block = document.createElement("div");
-  block.className = "fileBlock";
-  
-  const header = document.createElement("h3");
-  header.textContent = name;
+        // long press to rename
+        let pressTimer = null;
+        item.addEventListener('mousedown', ()=> pressTimer = setTimeout(()=> renameFileSidebar(f, item), 800));
+        item.addEventListener('mouseup', ()=> clearTimeout(pressTimer));
+        item.addEventListener('mouseleave', ()=> clearTimeout(pressTimer));
 
-  const btnContainer = document.createElement("span");
-  const saveBtn = document.createElement("button");
-  saveBtn.textContent = "Save"; saveBtn.className="saveBtn";
-  saveBtn.onclick = async () => saveFile(name, textarea.value);
+        list.appendChild(item);
+      });
+    }
 
-  const deleteBtn = document.createElement("button");
-  deleteBtn.textContent="Delete"; deleteBtn.className="deleteBtn";
-  deleteBtn.onclick = async () => { await deleteFile(name); block.remove(); };
+    // Escape simple html
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, (c)=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'":"&#39;'}[c])); }
 
-  const renameBtn = document.createElement("button");
-  renameBtn.textContent="Rename"; renameBtn.className="renameBtn";
-  renameBtn.onclick = async () => renameFile(name, textarea, header);
+    // Search filter
+    function filterFiles(){
+      const q = document.getElementById('searchFiles').value.toLowerCase();
+      const filtered = filesData.filter(f => f.toLowerCase().includes(q));
+      const list = document.getElementById('fileList');
+      list.innerHTML = '';
+      filtered.forEach(f => {
+        const item = document.createElement('div');
+        item.className = 'file-item';
+        item.dataset.filename = f;
+        item.innerHTML = `<div class="titleWrap"><span class="fileTitle">${escapeHtml(f)}</span></div>`;
+        item.onclick = () => openFile(f);
+        list.appendChild(item);
+      });
+    }
 
-  btnContainer.appendChild(saveBtn);
-  btnContainer.appendChild(deleteBtn);
-  btnContainer.appendChild(renameBtn);
-  header.appendChild(btnContainer);
+    // Open file and add block
+    async function openFile(name){
+      try{
+        const res = await fetch(`${API_BASE}/file/${encodeURIComponent(name)}`);
+        if(!res.ok) throw new Error('Not found');
+        const data = await res.json();
+        addFileBlock(name, data.content || '');
+      }catch(err){
+        console.error(err);
+        alert('Failed to open file');
+      }
+    }
 
-  const textarea = document.createElement("textarea");
-  textarea.value = content;
+    // Create UI block for a file
+    function addFileBlock(name, content){
+      const container = document.getElementById('blocksContainer');
+      const block = document.createElement('div');
+      block.className = 'fileBlock';
 
-  block.appendChild(header);
-  block.appendChild(textarea);
-  main.appendChild(block);
-}
+      const header = document.createElement('div');
+      header.className = 'fileBlockHeader';
+      const title = document.createElement('div'); title.className='fileBlockTitle'; title.textContent = name;
+      const actions = document.createElement('div'); actions.className='fileBlockActions';
 
-// SAVE, DELETE, RENAME, CREATE
-async function saveFile(name, content){
-  try{
-    await fetch(`${API_BASE}/file/update`, {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ filename:name, content })
+      const saveBtn = document.createElement('button'); saveBtn.className='saveBtn'; saveBtn.textContent='Save';
+      const delBtn = document.createElement('button'); delBtn.className='deleteBtn'; delBtn.textContent='Delete';
+      const renameBtn = document.createElement('button'); renameBtn.className='renameBtn'; renameBtn.textContent='Rename';
+
+      actions.appendChild(saveBtn); actions.appendChild(delBtn); actions.appendChild(renameBtn);
+      header.appendChild(title); header.appendChild(actions);
+
+      const ta = document.createElement('textarea'); ta.value = content;
+
+      saveBtn.onclick = async ()=> { await saveFile(name, ta.value); };
+      delBtn.onclick = async ()=> { if(confirm('Delete '+name+'?')){ await deleteFile(name); block.remove(); } };
+      renameBtn.onclick = async ()=> { await renameFile(name, ta.value, title); };
+
+      block.appendChild(header); block.appendChild(ta);
+      container.prepend(block);
+      // scroll into view
+      block.scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+
+    // Save file using update endpoint
+    async function saveFile(filename, content){
+      try{
+        const res = await fetch(`${API_BASE}/file/update`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ filename, content })
+        });
+        if(!res.ok) throw new Error('Save failed');
+        alert('Saved '+filename);
+        await loadFiles();
+      }catch(err){ console.error(err); alert('Save failed'); }
+    }
+
+    // Delete file
+    async function deleteFile(filename){
+      try{
+        const res = await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`, { method:'DELETE' });
+        if(!res.ok) throw new Error('Delete failed');
+        filesData = filesData.filter(f => f !== filename);
+        renderFileList();
+      }catch(err){ console.error(err); alert('Delete failed'); }
+    }
+
+    // Rename implemented as create(new) + delete(old)
+    async function renameFile(oldName, currentContent, titleNode){
+      const newName = prompt('New file name (include extension if desired)?', oldName);
+      if(!newName) return;
+      try{
+        // create new
+        const createRes = await fetch(`${API_BASE}/file/create`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ title: stripExtensionForTitle(newName), content: currentContent })
+        });
+        if(!createRes.ok) throw new Error('Create failed');
+        // delete old
+        const delRes = await fetch(`${API_BASE}/file/${encodeURIComponent(oldName)}`, { method:'DELETE' });
+        // update local list & UI
+        filesData = filesData.map(f => f===oldName ? deriveFilenameFromTitle(newName) : f);
+        renderFileList();
+        if(titleNode) titleNode.textContent = deriveFilenameFromTitle(newName);
+      }catch(err){ console.error(err); alert('Rename failed'); }
+    }
+
+    // Sidebar long-press rename
+    async function renameFileSidebar(oldName, el){
+      const newName = prompt('New name?', oldName);
+      if(!newName) return;
+      try{
+        // fetch content then create+delete
+        const res = await fetch(`${API_BASE}/file/${encodeURIComponent(oldName)}`);
+        const j = await res.json();
+        await fetch(`${API_BASE}/file/create`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title: stripExtensionForTitle(newName), content: j.content||'' }) });
+        await fetch(`${API_BASE}/file/${encodeURIComponent(oldName)}`, { method:'DELETE' });
+        el.querySelector('.fileTitle').textContent = deriveFilenameFromTitle(newName);
+        filesData = filesData.map(f => f===oldName ? deriveFilenameFromTitle(newName) : f);
+      }catch(err){ console.error(err); alert('Rename failed'); }
+    }
+
+    // Create new file
+    async function createFile(){
+      const name = prompt('File name?'); if(!name) return;
+      try{
+        await fetch(`${API_BASE}/file/create`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ title: stripExtensionForTitle(name), content: '' }) });
+        filesData.unshift(deriveFilenameFromTitle(name));
+        renderFileList();
+      }catch(err){ console.error(err); alert('Create failed'); }
+    }
+
+    function stripExtensionForTitle(name){
+      // remove .txt if present, backend will append .txt
+      return name.replace(/\.txt$/i, '').replace(/_/g,' ').trim();
+    }
+
+    function deriveFilenameFromTitle(title){
+      // backend uses: title.replace(' ','_').toLowerCase()+'.txt'
+      return title.replace(/\s+/g,'_').toLowerCase().replace(/\.txt$/i,'') + '.txt';
+    }
+
+    // init handlers
+    document.addEventListener('DOMContentLoaded', ()=>{
+      document.getElementById('enterBtn').addEventListener('click', checkPassword);
+      document.getElementById('demoBtn').addEventListener('click', demoAccess);
+      document.getElementById('addFileTop').addEventListener('click', createFile);
+      document.getElementById('addFileBottom').addEventListener('click', createFile);
+      document.getElementById('searchFiles').addEventListener('input', filterFiles);
     });
-    alert("Saved "+name);
-    loadFiles();
-  }catch(err){console.error(err);}
-}
-
-async function deleteFile(name){
-  try{
-    await fetch(`${API_BASE}/file/${encodeURIComponent(name)}`, { method:"DELETE" });
-    filesData = filesData.filter(f => f!==name);
-    renderFileList();
-  }catch(err){console.error(err);}
-}
-
-async function renameFile(oldName, textarea, header){
-  const newName = prompt("New name?", oldName);
-  if(!newName) return;
-  try{
-    await fetch(`${API_BASE}/file/rename`, {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ oldName, newName, content: textarea.value })
-    });
-    header.childNodes[0].textContent = newName;
-    filesData = filesData.map(f => f===oldName ? newName : f);
-    renderFileList();
-  }catch(err){console.error(err);}
-}
-
-async function renameFileSidebar(oldName, div){
-  const newName = prompt("New file name?", oldName);
-  if(!newName) return;
-  try{
-    await fetch(`${API_BASE}/file/rename`, {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ oldName, newName, content: "" })
-    });
-    div.textContent = newName;
-    filesData = filesData.map(f => f===oldName ? newName : f);
-  }catch(err){console.error(err);}
-}
-
-async function createFile(){
-  const name = prompt("File name?");
-  if(!name) return;
-  try{
-    await fetch(`${API_BASE}/file/create`, {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ title:name, content:"" })
-    });
-    filesData.push(name);
-    renderFileList();
-  }catch(err){console.error(err);}
-}
-
-function checkPassword() {
-  const pass = document.getElementById("dashboardPassword").value;
-  const errorBox = document.getElementById("passwordError");
-
-  if(pass === DASHBOARD_PASSWORD){
-    document.getElementById("passwordOverlay").style.display = "none";
-    document.getElementById("dashboardContainer").style.display = "flex";
-    // Load your files or dashboard
-    loadFiles();
-  } else {
-    errorBox.textContent = "Incorrect password! Try again.";
-    document.getElementById("dashboardPassword").value = "";
-  }
-}
