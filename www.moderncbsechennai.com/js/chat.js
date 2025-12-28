@@ -1,4 +1,5 @@
 // js/chat.js
+import { sendMessage } from "./config.js";
 
 window.addEventListener("DOMContentLoaded", () => {
   // ---- Config / Base URL --------------------------------------------------

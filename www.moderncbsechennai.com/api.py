@@ -13,22 +13,31 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
-
-# OpenAI client
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None
-
-# Attempt to import your vector loader; fallback to None
-try:
-    from vector import load_vector_store
-except Exception as e:
-    load_vector_store = None
-    # We will log after logger is initialized
+from google.cloud import storage
 
 # ======================
-# Logging / Debug
+# Google Cloud Storage
+# ======================
+storage_client = storage.Client()
+BUCKET_NAME = "msss-text-files"
+
+# ----------------------
+# FastAPI app + CORS setup
+# ----------------------
+app = FastAPI(title="MSSS Backend", version="1.0.0")
+allowed_origins = ["https://modernschooltesting.netlify.app","https://schooltesting3.netlify.app"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
+
+# ======================
+# Logging
 # ======================
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 logging.basicConfig(
@@ -37,9 +46,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("msss")
 
-# ----------------------
-# Defaults for your deployment (can be overridden by env)
-# ----------------------
+# ======================
+# Project env
+# ======================
 DEFAULT_PROJECT = "modernschoolnanganallurChatbot"
 DEFAULT_LOCATION = "asia-south1"
 
@@ -51,22 +60,31 @@ GOOGLE_CLOUD_LOCATION = env("GOOGLE_CLOUD_LOCATION", DEFAULT_LOCATION)
 REFRESH_VECTORS_ON_STARTUP = env("REFRESH_VECTORS_ON_STARTUP", "true").lower() == "true"
 
 # ======================
-# OpenAI client setup
+# OpenAI setup
 # ======================
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
+
+try:
+    from vector import load_vector_store
+except Exception as e:
+    load_vector_store = None
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if OpenAI is None:
     log.error("OpenAI python package not available. Install `openai`.")
     _openai_client = None
 else:
     try:
-        # new OpenAI client usage
         _openai_client = OpenAI(api_key=OPENAI_API_KEY)
     except Exception as e:
         _openai_client = None
         log.error(f"Failed to initialize OpenAI client: {e}")
 
 # ======================
-# Embedding & LLM wrappers (replace Vertex)
+# Embeddings / LLMs
 # ======================
 class OpenAIEmbedder:
     def __init__(self, client: "OpenAI", model: str = "text-embedding-3-small", dim: int = 512):
@@ -78,7 +96,6 @@ class OpenAIEmbedder:
         if not text:
             return [0.0] * self.dim
         if self.client is None:
-            # fallback deterministic hashing to vector
             h = hashlib.sha256(text.encode("utf-8")).digest()
             vec = []
             prev = h
@@ -87,10 +104,8 @@ class OpenAIEmbedder:
                 vec.extend([b / 255.0 for b in prev])
             return vec[:self.dim]
         try:
-            # call OpenAI embeddings API
             res = self.client.embeddings.create(model=self.model, input=text)
-            emb = res.data[0].embedding
-            return emb
+            return res.data[0].embedding
         except Exception as e:
             log.warning(f"Embedding call failed: {e}; using fallback embedder.")
             h = hashlib.sha256(text.encode("utf-8")).digest()
@@ -114,33 +129,24 @@ class OpenAIChatLLM:
         if self.client is None:
             raise RuntimeError("OpenAI client not initialized")
         try:
-            # Use the Chat Completions API via client.chat.completions.create
             resp = self.client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": prompt},
-                ],
+                messages=[{"role": "system", "content": self.system_prompt},{"role": "user", "content": prompt}],
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            # New client returns choices with message content
             content = ""
             if resp and getattr(resp, "choices", None):
-                # handle different shapes robustly
                 choice = resp.choices[0]
-                # some clients provide message or delta
                 message = getattr(choice, "message", None)
                 if message and getattr(message, "content", None):
                     content = message.content
                 else:
-                    # fallback to text or output_text
                     content = getattr(choice, "text", "") or getattr(resp, "output_text", "") or ""
             return content.strip()
         except Exception as e:
             raise
 
-# Emotion detection uses same chat model but short prompt
 class OpenAIEmotionLLM:
     def __init__(self, client: "OpenAI", model: str = "gpt-4o-mini"):
         self.client = client
@@ -168,7 +174,6 @@ class OpenAIEmotionLLM:
         except Exception as e:
             raise
 
-# Lazy constructors for embedding and llms
 _embedding_model = None
 _answer_llm = None
 _emotion_llm = None
@@ -176,24 +181,73 @@ _emotion_llm = None
 def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
-        _embedding_model = OpenAIEmbedder(client=_openai_client, model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"), dim=512)
+        _embedding_model = OpenAIEmbedder(client=_openai_client, model=os.getenv("OPENAI_EMBEDDING_MODEL","text-embedding-3-small"), dim=512)
     return _embedding_model
 
 def get_answer_llm():
     global _answer_llm
     if _answer_llm is None:
-        _answer_llm = OpenAIChatLLM(client=_openai_client, model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"))
+        _answer_llm = OpenAIChatLLM(client=_openai_client, model=os.getenv("OPENAI_CHAT_MODEL","gpt-4o-mini"))
     return _answer_llm
 
 def get_emotion_llm():
     global _emotion_llm
     if _emotion_llm is None:
-        _emotion_llm = OpenAIEmotionLLM(client=_openai_client, model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"))
+        _emotion_llm = OpenAIEmotionLLM(client=_openai_client, model=os.getenv("OPENAI_CHAT_MODEL","gpt-4o-mini"))
     return _emotion_llm
 
-# ----------------------
-# Globals / state
-# ----------------------
+# ======================
+# File operations
+# ======================
+@app.get("/files")
+def list_files():
+    bucket = storage_client.bucket(BUCKET_NAME)
+    files = [b.name for b in bucket.list_blobs()]
+    return JSONResponse(files)
+
+@app.get("/file/{filename}")
+def read_file(filename: str):
+    bucket = storage_client.bucket(BUCKET_NAME)
+    blob = bucket.blob(filename)
+    if not blob.exists():
+        return JSONResponse({"error": "File not found"}, status_code=404)
+    return JSONResponse({"filename": filename, "content": blob.download_as_text()})
+
+@app.post("/file/create")
+async def create_file(request: Request):
+    data = await request.json()
+    title = data.get("title")
+    content = data.get("content", "")
+    if not title:
+        return JSONResponse({"error": "Title required"}, status_code=400)
+    filename = title.replace(" ", "_").lower() + ".txt"
+    bucket = storage_client.bucket(BUCKET_NAME)
+    bucket.blob(filename).upload_from_string(content)
+    return JSONResponse({"status": "created", "file": filename})
+
+@app.post("/file/update")
+async def update_file(request: Request):
+    data = await request.json()
+    filename = data.get("filename")
+    content = data.get("content", "")
+    if not filename:
+        return JSONResponse({"error": "Filename required"}, status_code=400)
+    bucket = storage_client.bucket(BUCKET_NAME)
+    bucket.blob(filename).upload_from_string(content)
+    return JSONResponse({"status": "updated", "file": filename})
+
+@app.delete("/file/{filename}")
+def delete_file(filename: str):
+    bucket = storage_client.bucket(BUCKET_NAME)
+    blob = bucket.blob(filename)
+    if blob.exists():
+        blob.delete()
+        return JSONResponse({"status": "deleted", "file": filename})
+    return JSONResponse({"error": "File not found"}, status_code=404)
+
+# ======================
+# Globals / Memory
+# ======================
 conversation_history = []
 session_memory = []
 vector_stores = {}
@@ -204,29 +258,8 @@ for _d in ("img", "css", "dist"):
     os.makedirs(_d, exist_ok=True)
 
 # ======================
-# FastAPI app + CORS
-# ======================
-app = FastAPI(title="MSSS Backend", version="1.0.0")
-
-# ----------------------
-# CORS setup (Netlify + Local)
-# ----------------------
-allowed_origins = ["https://modernschooltesting.netlify.app","https://schooltesting3.netlify.app"]
-
-log.info(f"🔐 CORS allow_origins = {allowed_origins}")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
-
-# ----------------------
 # Static mounts
-# ----------------------
+# ======================
 if os.path.isdir("img"):
     app.mount("/img", StaticFiles(directory="img"), name="img")
 if os.path.isdir("css"):
@@ -253,11 +286,11 @@ def index():
         "location": GOOGLE_CLOUD_LOCATION,
         "vectors_refreshed_on_startup": REFRESH_VECTORS_ON_STARTUP
     })
-
+    
 @app.get("/health")
-@app.get("/_/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "allowed": allowed_origins}
+
 
 @app.get("/llm/health")
 def llm_health():
@@ -272,42 +305,27 @@ async def chat(payload: dict):
     msg = payload.get("message", "")
     return {"reply": f"Echo: {msg}"}
 
-
-
 # ======================
-# Math utilities
+# Math Utilities
 # ======================
 def solve_math_expression(expr: str):
-    """
-    Degree-based trig; simple equation solving with SymPy; safe eval sandbox.
-    """
     try:
         import sympy as sp
-
-        expr = (
-            expr.lower()
-            .replace("^", "**")
-            .replace("×", "*")
-            .replace("÷", "/")
-            .strip()
-        )
-
+        expr = expr.lower().replace("^", "**").replace("×", "*").replace("÷", "/").strip()
         x, y, z = sp.symbols("x y z")
-        allowed = {
-            "sin": lambda deg: math.sin(math.radians(float(deg))),
-            "cos": lambda deg: math.cos(math.radians(float(deg))),
-            "tan": lambda deg: math.tan(math.radians(float(deg))),
-            "asin": lambda val: math.degrees(math.asin(float(val))),
-            "acos": lambda val: math.degrees(math.acos(float(val))),
-            "atan": lambda val: math.degrees(math.atan(float(val))),
-            "sqrt": math.sqrt,
-            "log": math.log10,
-            "ln": math.log,
-            "pi": math.pi,
-            "e": math.e,
-            "pow": pow,
-        }
-
+        allowed = {"sin": lambda deg: math.sin(math.radians(float(deg))),
+                   "cos": lambda deg: math.cos(math.radians(float(deg))),
+                   "tan": lambda deg: math.tan(math.radians(float(deg))),
+                   "asin": lambda val: math.degrees(math.asin(float(val))),
+                   "acos": lambda val: math.degrees(math.acos(float(val))),
+                   "atan": lambda val: math.degrees(math.atan(float(val))),
+                   "sqrt": math.sqrt,
+                   "log": math.log10,
+                   "ln": math.log,
+                   "pi": math.pi,
+                   "e": math.e,
+                   "pow": pow,
+                   }
         if "=" in expr:
             lhs, rhs = expr.split("=")
             solution = sp.solve(sp.sympify(lhs) - sp.sympify(rhs), x)
@@ -316,23 +334,19 @@ def solve_math_expression(expr: str):
             if len(solution) == 1:
                 return f"The value of x is {solution[0]}."
             return f"Possible values of x are: {', '.join(map(str, solution))}."
-
         try:
             simplified = sp.simplify(expr)
             if str(simplified) != expr:
                 expr = str(simplified)
         except Exception:
             pass
-
-        result = eval(expr, {"__builtins__": None}, allowed)  # guarded
+        result = eval(expr, {"__builtins__": None}, allowed)
         if isinstance(result, float):
             result = round(result, 6)
         return f"The result is {result}"
-
     except Exception as e:
         log.warning(f"⚠️ Math solver error: {e}")
         return None
-
 
 def explain_math_step_by_step(expr: str):
     import sympy as sp
@@ -352,12 +366,10 @@ def explain_math_step_by_step(expr: str):
         elif "=" in expr:
             lhs, rhs = expr.split("=")
             solution = sp.solve(sp.sympify(lhs) - sp.sympify(rhs), x)
-            steps = [
-                f"Step 1️⃣: Start with {lhs} = {rhs}",
-                f"Step 2️⃣: Move all terms to one side: ({lhs}) - ({rhs}) = 0",
-                f"Step 3️⃣: Simplify and solve for x",
-                f"✅ Solution: x = {solution}",
-            ]
+            steps = [f"Step 1️⃣: Start with {lhs} = {rhs}",
+                     f"Step 2️⃣: Move all terms to one side: ({lhs}) - ({rhs}) = 0",
+                     f"Step 3️⃣: Simplify and solve for x",
+                     f"✅ Solution: x = {solution}"]
             return "\n".join(steps)
         else:
             simplified = sp.simplify(expr)
@@ -382,82 +394,68 @@ def retrieve_relevant_memory(question: str, top_n=5):
     except Exception as e:
         log.warning(f"⚠️ Embedding error: {e}")
         return ""
-
     if not session_memory:
         return ""
-
     def cosine_similarity(a, b):
         if a is None or b is None:
             return 0
-        dot = sum(x * y for x, y in zip(a, b))
-        norm_a = sum(x * x for x in a) ** 0.5
-        norm_b = sum(y * y for y in b) ** 0.5
-        if norm_a == 0 or norm_b == 0:
+        dot = sum(x*y for x,y in zip(a,b))
+        norm_a = sum(x*x for x in a)**0.5
+        norm_b = sum(y*y for y in b)**0.5
+        if norm_a==0 or norm_b==0:
             return 0
-        return dot / (norm_a * norm_b)
-
-    scored = []
+        return dot/(norm_a*norm_b)
+    scored=[]
     for entry in session_memory:
         score = cosine_similarity(query_embed, entry["embedding"])
         scored.append((score, entry))
-
-    scored.sort(reverse=True, key=lambda x: x[0])
+    scored.sort(reverse=True,key=lambda x:x[0])
     top_entries = [f"Q: {e['question']}\nA: {e['answer']}" for _, e in scored[:top_n]]
     return "\n".join(top_entries)
 
 # ======================
-# Greetings / Farewells / Emotion
+# Greetings / Farewell / Emotion
 # ======================
 GREETINGS = ["hello", "hi", "hey", "good morning", "good afternoon", "good evening"]
 FAREWELLS = ["bye", "goodbye", "see you", "farewell"]
 
 def check_greeting(q: str):
-    q = q.lower()
+    q=q.lower()
     if any(g in q for g in GREETINGS):
-        return ("Welcome to Modern Senior Secondary School! I'm Brightly, your assistant. "
-                "How can I help you today?")
+        return "Welcome to Modern Senior Secondary School! I'm Brightly, your assistant. How can I help you today?"
     return None
 
 def check_farewell(q: str):
-    q = q.lower()
+    q=q.lower()
     if any(f in q for f in FAREWELLS):
         return "Goodbye! Have a great day 🌟 Come back soon!"
     return None
 
 def detect_emotion(user_input: str):
-    factual_keywords = [
-        "what","where","when","how","who","which","fee","fees","address","location",
-        "principal","teacher","school","exam","contact","number","subject","student",
-        "class","admission",
-    ]
+    factual_keywords = ["what","where","when","how","who","which","fee","fees","address","location",
+                        "principal","teacher","school","exam","contact","number","subject","student","class","admission"]
     if any(re.search(rf"\b{kw}\b", user_input.lower()) for kw in factual_keywords):
         return None
     if any(emoji in user_input for emoji in ["💡", "😊", "😄", "🎉", "🥳"]):
         return None
-    prompt = f"""
+    prompt=f"""
 Detect if this message is Positive (appreciation/humor) or Negative (complaint/anger).
 Return only: Positive / Negative / Neutral
 Message: {user_input}
 """
     try:
         resp = get_emotion_llm().invoke(prompt).strip().capitalize()
-        if resp == "Positive":
-            responses = [
-                "That's really kind of you, thank you 😊",
-                "Glad to hear that! You're awesome!",
-                "That made my day 😄",
-                "You're too sweet — thanks a lot!",
-                "Aww, I appreciate that 💫",
-            ]
+        if resp=="Positive":
+            responses = ["That's really kind of you, thank you 😊","Glad to hear that! You're awesome!","That made my day 😄","You're too sweet — thanks a lot!","Aww, I appreciate that 💫"]
             return random.choice(responses)
-        elif resp == "Negative":
+        elif resp=="Negative":
             return "I'm sorry if something felt off. Let’s fix it together."
     except Exception as e:
         log.warning(f"⚠️ Emotion detection error: {e}")
     return None
 
 # ======================
-# Intent & Vector Stores
+# Vector store & NCERT
 # ======================
 INTENT_MAP = {
     "fees": ["fee", "fees", "structure", "tuition"],
@@ -467,31 +465,48 @@ INTENT_MAP = {
 }
 
 def refresh_vector_stores():
-    """Build retrievers from all .txt files in ./data (if present)."""
     global vector_stores
-    vector_stores = {}
+    vector_stores={}
     if load_vector_store is None:
         log.info("ℹ️ load_vector_store unavailable; skipping vector build.")
         return
     if not os.path.isdir("data"):
         log.info("ℹ️ No data directory found; skipping vector build.")
         return
-    current_files = {
-        os.path.splitext(f)[0]: os.path.join("data", f)
-        for f in os.listdir("data")
-        if f.endswith(".txt")
-    }
-    for name, file in current_files.items():
+    current_files = {os.path.splitext(f)[0]: os.path.join("data", f) for f in os.listdir("data") if f.endswith(".txt")}
+    for name,file in current_files.items():
         try:
-            retriever = load_vector_store() # Assuming load_vector_store no longer takes a path
+            retriever = load_vector_store()
             if retriever:
-                vector_stores[name] = retriever
+                vector_stores[name]=retriever
         except Exception as e:
             log.warning(f"⚠️ Failed to build retriever for '{file}': {e}")
     log.info(f"✅ Vector stores loaded: {list(vector_stores.keys())}")
 
+NCERT_DATASETS = {
+    "ncert_maths": "data/ncert_maths.txt",
+    "ncert_physics": "data/ncert_physics.txt",
+    "ncert_chemistry": "data/ncert_chemistry.txt",
+}
+
+def load_ncert_vectors():
+    if load_vector_store is None:
+        log.info("ℹ️ load_vector_store unavailable; skipping NCERT.")
+        return
+    loaded=[]
+    for name,path in NCERT_DATASETS.items():
+        if os.path.exists(path):
+            try:
+                retriever = load_vector_store()
+                if retriever:
+                    vector_stores[name]=retriever
+                    loaded.append(name)
+            except Exception as e:
+                log.warning(f"⚠️ Failed to load NCERT '{name}': {e}")
+    log.info(f"📘 NCERT datasets loaded: {loaded}")
+
 # ======================
-# Misc helpers
+# Helper utilities
 # ======================
 def split_subquestions(q: str):
     if not any(sep in q.lower() for sep in [" and ", ";", "?"]):
@@ -513,156 +528,93 @@ def safe_retrieve(retriever, query):
     return retriever._get_relevant_documents(query, run_manager=None)
 
 # ======================
-# NCERT optional datasets (if present)
-# ======================
-NCERT_DATASETS = {
-    "ncert_maths": "data/ncert_maths.txt",
-    "ncert_physics": "data/ncert_physics.txt",
-    "ncert_chemistry": "data/ncert_chemistry.txt",
-}
-
-def load_ncert_vectors():
-    if load_vector_store is None:
-        log.info("ℹ️ load_vector_store unavailable; skipping NCERT.")
-        return
-    loaded = []
-    for name, path in NCERT_DATASETS.items():
-        if os.path.exists(path):
-            try:
-                retriever = load_vector_store() # Assuming load_vector_store no longer takes a path
-                if retriever:
-                    vector_stores[name] = retriever
-                    loaded.append(name)
-            except Exception as e:
-                log.warning(f"⚠️ Failed to load NCERT '{name}': {e}")
-    log.info(f"📘 NCERT datasets loaded: {loaded}")
-
-# ======================
-# Schemas
+# Admin endpoints
 # ======================
 class Query(BaseModel):
     question: str
 
-# ======================
-# Admin
-# ======================
 @app.post("/admin/refresh")
 def admin_refresh():
     try:
         refresh_vector_stores()
         load_ncert_vectors()
-        return {
-            "ok": True,
-            "message": "Vectors refreshed",
-            "stores": list(vector_stores.keys()),
-        }
+        return {"ok": True,"message":"Vectors refreshed","stores": list(vector_stores.keys())}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+        return JSONResponse(status_code=500, content={"ok": False,"error": str(e)})
 
 # ======================
 # Ask endpoint
 # ======================
-
 @app.post("/ask")
 async def ask(query: Query):
-    q_text = query.question.strip()
-    final_answers = []
-
-    math_regex = re.compile(
-        r"d/dx|dx|differentiate|derive|integrate|roots|equation|simplify|sin|cos|tan|log|sqrt|=|[\d+\-*/^()]"
-    )
-
-    # 1) Math / Science direct
+    q_text=query.question.strip()
+    final_answers=[]
+    math_regex = re.compile(r"d/dx|dx|differentiate|derive|integrate|roots|equation|simplify|sin|cos|tan|log|sqrt|=|[\d+\-*/^()]")
     if math_regex.search(q_text):
-        step_result = explain_math_step_by_step(q_text)
+        step_result=explain_math_step_by_step(q_text)
         if step_result:
-            add_to_memory(q_text, step_result)
-            conversation_history.append({"question": q_text, "answer": step_result})
-            return JSONResponse({"answer": step_result, "history": conversation_history})
-
-        math_result = solve_math_expression(q_text)
+            add_to_memory(q_text,step_result)
+            conversation_history.append({"question":q_text,"answer":step_result})
+            return JSONResponse({"answer":step_result,"history":conversation_history})
+        math_result=solve_math_expression(q_text)
         if math_result:
-            add_to_memory(q_text, math_result)
-            conversation_history.append({"question": q_text, "answer": math_result})
-            return JSONResponse({"answer": math_result, "history": conversation_history})
-
-    # 2) Greetings / Farewell / Emotion
-    if resp := check_greeting(q_text):
-        return JSONResponse({"answer": resp, "history": conversation_history})
-    if resp := check_farewell(q_text):
-        return JSONResponse({"answer": resp, "history": conversation_history})
-    if resp := detect_emotion(q_text):
-        return JSONResponse({"answer": resp, "history": conversation_history})
-
-    # 3) Identity / capabilities
-    answer = None
-    lower_q = q_text.lower()
+            add_to_memory(q_text,math_result)
+            conversation_history.append({"question":q_text,"answer":math_result})
+            return JSONResponse({"answer":math_result,"history":conversation_history})
+    if resp:=check_greeting(q_text):
+        return JSONResponse({"answer":resp,"history":conversation_history})
+    if resp:=check_farewell(q_text):
+        return JSONResponse({"answer":resp,"history":conversation_history})
+    if resp:=detect_emotion(q_text):
+        return JSONResponse({"answer":resp,"history":conversation_history})
+    answer=None
+    lower_q=q_text.lower()
     if any(phrase in lower_q for phrase in INTENT_MAP["self_identity"]):
-        answer = "I'm Brightly — your friendly Modern Senior Secondary School assistant."
-    elif any(word in lower_q for word in ["provide", "offer", "help", "assist", "what can you"]):
-        answer = random.choice(
-            [
-                "I can help you with school details, fees, admissions, exams, and staff information.",
-                "I assist with queries about Modern Senior Secondary School — like fees, staff, or classes.",
-                "I provide details about school activities, admissions, and academic info.",
-                "I’m here to share school-related information and help you find what you need!",
-            ]
-        )
-
+        answer="I'm Brightly — your friendly Modern Senior Secondary School assistant."
+    elif any(word in lower_q for word in ["provide","offer","help","assist","what can you"]):
+        answer=random.choice(["I can help you with school details, fees, admissions, exams, and staff information.",
+                              "I assist with queries about Modern Senior Secondary School — like fees, staff, or classes.",
+                              "I provide details about school activities, admissions, and academic info.",
+                              "I’m here to share school-related information and help you find what you need!"])
     if answer:
-        add_to_memory(q_text, answer)
-        conversation_history.append({"question": q_text, "answer": answer})
-        return JSONResponse({"answer": answer, "history": conversation_history})
-
-    # 4) Main processing (split)
-    sub_qs = split_subquestions(q_text)
-
-    simple_math_questions = {
-        "quadratic equations": "A quadratic equation is of the form ax² + bx + c = 0. The solutions are x = [-b ± √(b² - 4ac)] / 2a.",
-    }
-
+        add_to_memory(q_text,answer)
+        conversation_history.append({"question":q_text,"answer":answer})
+        return JSONResponse({"answer":answer,"history":conversation_history})
+    sub_qs=split_subquestions(q_text)
+    simple_math_questions={"quadratic equations":"A quadratic equation is of the form ax² + bx + c = 0. The solutions are x = [-b ± √(b² - 4ac)] / 2a."}
     for sq in sub_qs:
-        answer = None
-
-        for key, val in simple_math_questions.items():
+        answer=None
+        for key,val in simple_math_questions.items():
             if key in sq.lower():
-                answer = val
+                answer=val
                 break
-
         if not answer and math_regex.search(sq):
-            step_result = explain_math_step_by_step(sq)
-            answer = step_result or solve_math_expression(sq)
-
+            step_result=explain_math_step_by_step(sq)
+            answer=step_result or solve_math_expression(sq)
         if not answer:
-            context = ""
-            # Manual cache (optional file)
-            MANUAL_CACHE_FILE = "answer_cache.json"
+            context=""
+            MANUAL_CACHE_FILE="answer_cache.json"
             if os.path.exists(MANUAL_CACHE_FILE):
                 try:
-                    with open(MANUAL_CACHE_FILE, "r", encoding="utf-8") as f:
-                        manual_cache = json.load(f)
+                    with open(MANUAL_CACHE_FILE,"r",encoding="utf-8") as f:
+                        manual_cache=json.load(f)
                     if sq in manual_cache:
-                        context += str(manual_cache[sq].get("answer", "")) + "\n"
+                        context+=str(manual_cache[sq].get("answer",""))+"\n"
                 except Exception as e:
                     log.warning(f"⚠️ Manual cache load error: {e}")
-
-            # Vector stores
-            for store_name, retriever in vector_stores.items():
+            for store_name,retriever in vector_stores.items():
                 try:
-                    results = safe_retrieve(retriever, sq)
+                    results=safe_retrieve(retriever,sq)
                     if results:
-                        context += "\n".join([doc.page_content for doc in results]) + "\n"
+                        context+="\n".join([doc.page_content for doc in results])+"\n"
                 except Exception as e:
                     log.warning(f"⚠️ Retriever '{store_name}' error: {e}")
-
-            # Conversation memory
-            conv_context = retrieve_relevant_memory(sq)
+            conv_context=retrieve_relevant_memory(sq)
             if conv_context:
-                context += "\n--- Previous conversation ---\n" + conv_context
+                context+="\n--- Previous conversation ---\n"+conv_context
             if not context.strip():
-                context = "No data found."
-
-            prompt = f"""
+                context="No data found."
+            prompt=f"""
 You are called and are Brightly — the official AI assistant of Modern Senior Secondary School, Chennai.
 You are also a helpful school AI tutor.
 Explain and solve problems in math, physics, and chemistry like an experienced teacher.
@@ -688,65 +640,77 @@ Question: {sq}
 Answer:
 """
             try:
-                answer = get_answer_llm().invoke(prompt).strip()
+                answer=get_answer_llm().invoke(prompt).strip()
             except Exception as e:
                 log.warning(f"⚠️ LLM error: {e}")
-                answer = "I’m having trouble accessing the data at the moment, please try again."
-
-        add_to_memory(sq, answer)
-        conversation_history.append({"question": sq, "answer": answer})
+                answer="I’m having trouble accessing the data at the moment, please try again."
+        add_to_memory(sq,answer)
+        conversation_history.append({"question":sq,"answer":answer})
         final_answers.append(answer)
-
-    return JSONResponse({"answer": "\n".join(final_answers), "history": conversation_history})
+    return JSONResponse({"answer":"\n".join(final_answers),"history":conversation_history})
 
 # ======================
-# Sessions (optional persistence)
+# Sessions persistence
 # ======================
-SESSION_DIR = "sessions"
-os.makedirs(SESSION_DIR, exist_ok=True)
-SESSION_FILE = None
+SESSION_DIR="sessions"
+os.makedirs(SESSION_DIR,exist_ok=True)
+SESSION_FILE=None
 
 def start_new_session():
+    from datetime import datetime
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return os.path.join(SESSION_DIR, f"session_{timestamp}.json")
+    session_file = os.path.join(SESSION_DIR, f"session_{timestamp}.json")
+    with open(session_file, "w") as f:
+        f.write("{}")  # create empty JSON
+    return session_file
 
 def save_session_data(session_file):
     try:
-        data_to_save = [{"question": q["question"], "answer": q["answer"]} for q in session_memory[-50:]]
-        with open(session_file, "w", encoding="utf-8") as f:
-            json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+        data_to_save=[{"question":q["question"],"answer":q["answer"]} for q in session_memory[-50:]]
+        with open(session_file,"w",encoding="utf-8") as f:
+            json.dump(data_to_save,f,ensure_ascii=False,indent=2)
     except Exception as e:
         log.warning(f"⚠️ Failed to save session: {e}")
 
 def cleanup_old_sessions(max_files=10):
     try:
-        files = sorted(
-            [os.path.join(SESSION_DIR, f) for f in os.listdir(SESSION_DIR) if f.endswith(".json")],
-            key=os.path.getmtime,
-        )
+        files=sorted([os.path.join(SESSION_DIR,f) for f in os.listdir(SESSION_DIR) if f.endswith(".json")],key=os.path.getmtime)
         for f in files[:-max_files]:
-            try:
-                os.remove(f)
-                log.info(f"🗑️ Deleted old session: {f}")
-            except Exception:
-                pass
+            try: os.remove(f); log.info(f"🗑️ Deleted old session: {f}")
+            except Exception: pass
     except Exception as e:
         log.warning(f"⚠️ Session cleanup error: {e}")
 
 # ======================
 # Startup / Shutdown
 # ======================
+from fastapi import FastAPI
+from vector import load_vector_store
+
+vector_store = None
+
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
+    global vector_store, SESSION_DIR
+
+    # --- Ensure sessions directory exists ---
+    os.makedirs(SESSION_DIR, exist_ok=True)
+    log.info("📂 Session directory ready.")
+
+    # --- Basic startup logs ---
     log.info("🚀 Server starting up...")
     log.info(f"   Project = {GOOGLE_CLOUD_PROJECT}")
     log.info(f"   Location = {GOOGLE_CLOUD_LOCATION}")
     log.info(f"   Refresh vectors on startup = {REFRESH_VECTORS_ON_STARTUP}")
-    netlify_origin = os.getenv("NETLIFY_ORIGIN", "")
-    if netlify_origin:
-        log.info(f"NETLIFY_ORIGIN = {netlify_origin}")
+
+    # --- Load Vector DB (non-blocking: may still be warming) ---
+    vector_store = load_vector_store()  # returns None until ready
+    log.info("📦 Vector store loaded (or warming).")
+
+    # --- Cleanup any old junk session files ---
     cleanup_old_sessions(max_files=10)
 
+    # --- Optional vector refresh ---
     if REFRESH_VECTORS_ON_STARTUP:
         refresh_vector_stores()
         load_ncert_vectors()
@@ -756,15 +720,21 @@ def startup_event():
 
 @app.on_event("shutdown")
 def shutdown_event():
-    log.info("🚪 Server shutting down...")
     global SESSION_FILE
+    os.makedirs(SESSION_DIR, exist_ok=True)
+
     if SESSION_FILE is None:
         SESSION_FILE = start_new_session()
+
     save_session_data(SESSION_FILE)
     cleanup_old_sessions(max_files=10)
-    log.info(f"💾 Session data saved to {SESSION_FILE}")
+    log.info(f"Session saved: {SESSION_FILE}")
 
-# Local dev entrypoint (Cloud Run uses your Docker CMD)
-if __name__ == "__main__":
+
+# ======================
+# Local dev entrypoint
+# ======================
+if __name__=="__main__":
     import uvicorn
-    uvicorn.run("api:app", host="0.0.0.0", port=int(os.getenv("PORT", "8080")), reload=False)
+    port=int(os.getenv("PORT",8080))
+    uvicorn.run("api:app",host="0.0.0.0",port=port)

@@ -12,14 +12,16 @@
   <link rel="stylesheet" href="css/style.css">
 
   <!-- ✅ Load API config first -->
-  <script src="js/config.js"></script>
+  <script type="module" src="js/config.js"></script>
+  <script type="module" src="js/main.js"></script>
+
 
   <!-- ✅ Load jQuery before Bootstrap -->
   <script src="js/jquery.js" type="text/javascript"></script>
   <script src="dist/js/bootstrap.min.js"></script>
 
   <!-- ✅ Load your chatbot script last (it waits for DOMContentLoaded) -->
-  <script src="js/chat.js"></script>
+  <script type="module" src="js/chat.js"></script>
 
   <!-- Chat UI styles -->
   <style>

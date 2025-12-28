@@ -8,4 +8,8 @@ if [ -z "$OPENAI_API_KEY" ]; then
   exit 1
 fi
 
+# Start FAISS loading in background
+python -c "from vector import load_vector_store; import threading; threading.Thread(target=load_vector_store, daemon=True).start()" &
+
+# Start Uvicorn immediately
 exec uvicorn api:app --host=0.0.0.0 --port=${PORT:-8080}
