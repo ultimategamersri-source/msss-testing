@@ -377,11 +377,6 @@ def auth_check(data: dict):
         return {"success": True}
     return {"success": False}
 
-@app.post("/file/update")
-def update_file(payload: dict):
-    check_password(payload.get("password"))
-    ...
-
 # ======================
 # Math Utilities
 # ======================

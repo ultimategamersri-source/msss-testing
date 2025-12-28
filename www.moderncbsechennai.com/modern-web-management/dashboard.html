@@ -3,70 +3,93 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Modern School Dashboard</title>
-  <link rel="stylesheet" href="db.css">
+  <title>Modern School Dashboard - File Manager</title>
+  <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
 
 <!-- ===== PASSWORD OVERLAY ===== -->
-<div id="passwordOverlay">
-  <div id="passwordBox">
-    <h2>Enter Dashboard Password</h2>
-    <input type="password" id="dashboardPassword" placeholder="Enter Password">
-    <div style="display:flex; gap:8px; justify-content:center; margin-top:12px;">
-      <button id="enterBtn">Enter</button>
-      <button id="demoBtn">Demo</button>
+<div id="passwordOverlay" class="password-overlay">
+  <div class="password-container">
+    <div class="password-box">
+      <div class="password-icon">🔒</div>
+      <h2>Dashboard Access</h2>
+      <p class="password-subtitle">Enter your password to continue</p>
+      <input type="password" id="dashboardPassword" placeholder="Enter Password" autocomplete="off">
+      <div class="password-actions">
+        <button id="enterBtn" class="btn-primary">Enter</button>
+        <button id="demoBtn" class="btn-secondary">Demo</button>
+      </div>
+      <p id="passwordError" class="error-message"></p>
     </div>
-    <p id="passwordError"></p>
   </div>
 </div>
 
 <!-- ===== DASHBOARD CONTAINER ===== -->
-<div id="dashboardContainer" class="blurred">
-
-  <!-- ===== LEFT FILES TITLES VIEWER ===== -->
+<div id="dashboardContainer" class="dashboard-container blurred">
+  
+  <!-- ===== LEFT SIDEBAR - FILE TITLES VIEWER ===== -->
   <aside id="titlesViewer" class="sidebar">
     <div class="sidebar-header">
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-        <div style="font-weight:800; font-size:18px; color:#2d3436;">Projects</div>
-        <button id="addFileTop" class="addFileBtn" title="Add file">＋</button>
+      <div class="header-top">
+        <h1 class="project-title">📁 Files</h1>
+        <button id="searchToggleBtn" class="search-toggle-btn" title="Search files">🔍</button>
       </div>
-      <input type="text" id="searchFiles" placeholder="Search files...">
+      <div id="searchContainer" class="search-container hidden">
+        <input type="text" id="searchFiles" placeholder="Search files..." class="search-input">
+      </div>
     </div>
 
-    <div id="fileList"></div>
+    <div id="fileList" class="file-list">
+      <!-- File items will be dynamically added here -->
+    </div>
 
-    <div style="padding:12px;">
-      <button id="addFileBottom" class="addFileBtn">Add New File</button>
+    <div class="add-file-section">
+      <button id="addFileBtn" class="add-file-btn" title="Add new file">
+        <span class="plus-icon">+</span>
+        <span class="add-text">Add File</span>
+      </button>
     </div>
   </aside>
 
   <!-- ===== RIGHT MAIN CONTENT VIEW ===== -->
-  <main id="mainContent" class="mainContent">
-    <header class="topBar">
-      <div class="leftSearch">
-        <h3>Search Candidates</h3>
+  <main id="mainContent" class="main-content">
+    <div id="contentArea" class="content-area">
+      <!-- File content blocks will be dynamically added here -->
+      <div class="welcome-message" id="welcomeMessage">
+        <div class="welcome-icon">📄</div>
+        <h2>Welcome to File Manager</h2>
+        <p>Select a file from the sidebar to view or edit its contents</p>
       </div>
-      <div class="filters">
-        <input id="filterSkill" placeholder="Skill / Title">
-        <input id="filterSalary" placeholder="Salary Range">
-        <input id="searchFilesTop" placeholder="Input Keyword">
-        <button id="applyFilter">Apply Filter</button>
-      </div>
-      <div class="rightActions">
-        <div id="userGreeting">Hi, Admin</div>
-      </div>
-    </header>
-
-    <section id="listArea" class="listArea">
-      <!-- dynamic list rows here -->
-    </section>
-
-    <div id="blocksContainer"></div>
+    </div>
   </main>
 
 </div>
 
-<script src="db.js"></script>
+<!-- ===== RENAME MODAL ===== -->
+<div id="renameModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>Rename File</h3>
+    <input type="text" id="renameInput" placeholder="Enter new file name">
+    <div class="modal-actions">
+      <button id="renameConfirmBtn" class="btn-primary">Rename</button>
+      <button id="renameCancelBtn" class="btn-secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CREATE FILE MODAL ===== -->
+<div id="createFileModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>Create New File</h3>
+    <input type="text" id="createFileNameInput" placeholder="Enter file name (without .txt)">
+    <div class="modal-actions">
+      <button id="createFileConfirmBtn" class="btn-primary">Create</button>
+      <button id="createFileCancelBtn" class="btn-secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="dashboard.js"></script>
 </body>
 </html>
