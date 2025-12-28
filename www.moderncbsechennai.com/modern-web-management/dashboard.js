@@ -1,61 +1,88 @@
-async function loadFiles() {
-  const res = await fetch(base + "/files");
+// ===============================
+// CONFIG
+// ===============================
+const API_BASE = "https://msss-backend-961983851669.asia-south1.run.app"; // Cloud Run URL
+
+// ===============================
+// TEACHER MANAGEMENT
+// ===============================
+async function addTeacher() {
+  const name = document.getElementById("teacherName").value.trim();
+  if (!name) return alert("Enter teacher name");
+
+  const res = await fetch(`${API_BASE}/add-teacher`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name })
+  });
+
+  document.getElementById("resultBox").textContent = await res.text();
+  document.getElementById("teacherName").value = "";
+}
+
+async function getTeachers() {
+  const res = await fetch(`${API_BASE}/teachers`);
   const data = await res.json();
+  document.getElementById("resultBox").textContent = JSON.stringify(data, null, 2);
+}
+
+// ===============================
+// FILE MANAGEMENT
+// ===============================
+async function loadFiles() {
+  const res = await fetch(`${API_BASE}/files`);
+  const data = await res.json();
+  
   const list = document.getElementById("fileList");
   list.innerHTML = "";
 
-  data.files.forEach(f => {
+  data.files.forEach(file => {
     const item = document.createElement("div");
-    item.innerText = f;
-    item.onclick = () => loadSpecificFile(f);
-    item.style.cursor = "pointer";
-    item.style.padding = "6px";
-    item.style.borderBottom = "1px solid #ddd";
+    item.className = "file-item";
+    item.innerText = file;
+    item.onclick = () => openFile(file);
     list.appendChild(item);
   });
 }
 
-async function loadSpecificFile(name) {
-  const res = await fetch(base + "/data/latest", { // replace route if needed
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ filename: name })
-  });
-}
-// Load list
-async function listFiles() {
-  const files = await (await fetch(base + "/files")).json();
-  console.log(files);
+async function openFile(filename) {
+  const res = await fetch(`${API_BASE}/file/${filename}`);
+  const data = await res.json();
+  window.activeFile = filename;
+  document.getElementById("editor").value = data.content;
 }
 
-// Create new
-async function createFile() {
-  const title = prompt("Title?");
+async function saveFile() {
+  if (!window.activeFile) return alert("Select a file first");
+
   const content = document.getElementById("editor").value;
-  await fetch(base + "/file/create", {
+  await fetch(`${API_BASE}/file/update`, {
     method: "POST",
-    headers: {"Content-Type":"application/json"},
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: window.activeFile, content })
+  });
+
+  alert("Saved!");
+}
+
+async function createFile() {
+  const title = prompt("New file name?");
+  if (!title) return;
+  const content = document.getElementById("editor").value;
+
+  await fetch(`${API_BASE}/file/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title, content })
   });
+
+  loadFiles();
 }
 
-// Load file
-async function openFile(name) {
-  const data = await (await fetch(base + "/file/" + name)).json();
-  document.getElementById("editor").value = data.content;
-  window.activeFile = name;
-}
-
-// Save changes
-async function saveFile() {
-  await fetch(base + "/file/update", {
-    method: "POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({ filename: window.activeFile, content: document.getElementById("editor").value })
-  });
-}
-
-// Delete
-async function deleteFile(name) {
-  await fetch(base + "/file/" + name, { method:"DELETE" });
+async function deleteFile() {
+  if (!window.activeFile) return alert("Open a file first");
+  await fetch(`${API_BASE}/file/${window.activeFile}`, { method: "DELETE" });
+  document.getElementById("editor").value = "";
+  window.activeFile = null;
+  loadFiles();
 }

@@ -1,0 +1,51 @@
+body {
+  font-family: Arial, sans-serif;
+  background: #f0f3f9;
+  margin: 20px;
+}
+
+h2 { text-align: center; }
+
+.container {
+  display: grid;
+  grid-template-columns: 300px 300px 1fr;
+  gap: 20px;
+}
+
+.box {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+.box.large {
+  grid-column: span 1;
+}
+
+#fileList {
+  border: 1px solid #aaa;
+  height: 200px;
+  overflow-y: scroll;
+  padding: 8px;
+}
+
+.file-item {
+  padding: 5px;
+  border-bottom: 1px solid #ddd;
+  cursor: pointer;
+}
+
+.file-item:hover {
+  background: #e4edff;
+}
+
+textarea {
+  width: 100%;
+  height: 300px;
+  margin-top: 10px;
+}
+
+.editor-buttons button {
+  margin-right: 10px;
+}
