@@ -1,120 +1,94 @@
-// ===============================
-// CONFIG
-// ===============================
-const API_BASE = "https://msss-backend-961983851669.asia-south1.run.app"; // Cloud Run URL
+const API_BASE = "https://msss-backend-961983851669.asia-south1.run.app";
+const DASHBOARD_PASSWORD = "modernSchool2025"; // match your Cloud Run env var
 
-// ===============================
-// TEACHER MANAGEMENT
-// ===============================
-async function addTeacher() {
-  const name = document.getElementById("teacherName").value.trim();
-  if (!name) return alert("Enter teacher name");
+// Password modal
+const modal = document.getElementById("passwordModal");
+const loginBtn = document.getElementById("loginBtn");
+const passwordInput = document.getElementById("dashboardPassword");
+const loginError = document.getElementById("loginError");
+const dashboard = document.getElementById("dashboard");
 
-  const res = await fetch(`${API_BASE}/add-teacher`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name })
+loginBtn.addEventListener("click", () => {
+  if(passwordInput.value === DASHBOARD_PASSWORD) {
+    modal.style.display = "none";
+    dashboard.classList.remove("hidden");
+    initDashboard();
+  } else {
+    loginError.textContent = "Incorrect password!";
+  }
+});
+
+// ---- Dashboard functions ----
+let editor, activeFile = null;
+
+async function initDashboard() {
+  const textarea = document.getElementById("editor");
+  editor = CodeMirror.fromTextArea(textarea, {
+    lineNumbers: true,
+    mode: "javascript",
+    theme: "material-darker",
+    lineWrapping: true
   });
 
-  document.getElementById("resultBox").textContent = await res.text();
-  document.getElementById("teacherName").value = "";
+  document.getElementById("refreshBtn").onclick = loadFiles;
+  document.getElementById("createBtn").onclick = createFile;
+  document.getElementById("saveBtn").onclick = saveFile;
+  document.getElementById("deleteBtn").onclick = deleteFile;
+
+  editor.on("change", () => {
+    document.getElementById("preview").innerHTML = marked(editor.getValue());
+  });
+
+  await loadFiles();
 }
 
-async function getTeachers() {
-  const res = await fetch(`${API_BASE}/teachers`);
-  const data = await res.json();
-  document.getElementById("resultBox").textContent = JSON.stringify(data, null, 2);
-}
-
-// ===============================
-// FILE MANAGEMENT
-// ===============================
 async function loadFiles() {
   const res = await fetch(`${API_BASE}/files`);
   const data = await res.json();
-  
   const list = document.getElementById("fileList");
   list.innerHTML = "";
-
-  data.files.forEach(file => {
+  data.files.forEach(f => {
     const item = document.createElement("div");
-    item.className = "file-item";
-    item.innerText = file;
-    item.onclick = () => openFile(file);
+    item.textContent = f;
+    item.onclick = () => openFile(f);
     list.appendChild(item);
   });
 }
 
-async function openFile(filename) {
-  const res = await fetch(`${API_BASE}/file/${filename}`);
+async function openFile(name) {
+  activeFile = name;
+  const res = await fetch(`${API_BASE}/file/${name}`);
   const data = await res.json();
-  window.activeFile = filename;
-  document.getElementById("editor").value = data.content;
-}
-
-async function saveFile() {
-  if (!window.activeFile) return alert("Select a file first");
-
-  const content = document.getElementById("editor").value;
-  await fetch(`${API_BASE}/file/update`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ filename: window.activeFile, content })
-  });
-
-  alert("Saved!");
+  editor.setValue(data.content);
 }
 
 async function createFile() {
   const title = prompt("New file name?");
-  if (!title) return;
-  const content = document.getElementById("editor").value;
-
+  if(!title) return;
   await fetch(`${API_BASE}/file/create`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, content })
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ title, content: "" })
   });
+  await loadFiles();
+  openFile(title);
+}
 
-  loadFiles();
+async function saveFile() {
+  if(!activeFile) return alert("Open a file first!");
+  await fetch(`${API_BASE}/file/update`, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ filename: activeFile, content: editor.getValue() })
+  });
+  alert("Saved successfully!");
 }
 
 async function deleteFile() {
-  if (!window.activeFile) return alert("Open a file first");
-  await fetch(`${API_BASE}/file/${window.activeFile}`, { method: "DELETE" });
-  document.getElementById("editor").value = "";
-  window.activeFile = null;
-  loadFiles();
+  if(!activeFile) return alert("Open a file first!");
+  if(!confirm(`Delete file "${activeFile}"?`)) return;
+  await fetch(`${API_BASE}/file/${activeFile}`, { method:"DELETE" });
+  editor.setValue("");
+  activeFile = null;
+  await loadFiles();
 }
-// ===============================
-// SIMPLE LOGIN
-// ===============================
-let DASH_PASSWORD = null;
-
-async function login() {
-  const input = prompt("Enter dashboard password:");
-  const res = await fetch(`${API_BASE}/auth-check`, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ password: input })
-  });
-
-  const data = await res.json();
-  if(data.success){
-    DASH_PASSWORD = input;
-    alert("Logged in!");
-    loadFiles(); // auto load after login
-  } else {
-    alert("Wrong password");
-    DASH_PASSWORD = null;
-  }
-}
-await fetch(`${API_BASE}/file/update`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    password: DASH_PASSWORD,
-    filename: window.activeFile,
-    content: document.getElementById("editor").value
-  })
-});
