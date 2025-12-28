@@ -231,3 +231,43 @@ function checkPassword() {
       document.getElementById('addFileBottom').addEventListener('click', createFile);
       document.getElementById('searchFiles').addEventListener('input', filterFiles);
     });
+
+    // Render listArea rows to approximate the provided mockup
+    function renderListRows(){
+      const area = document.getElementById('listArea');
+      if(!area) return;
+      area.innerHTML = '';
+      filesData.forEach((f, idx) => {
+        const row = document.createElement('div'); row.className = 'listRow';
+
+        const chk = document.createElement('input'); chk.type='checkbox'; chk.className='check';
+        const avatar = document.createElement('div'); avatar.className='avatar'; avatar.textContent = initialsFromName(f);
+        const name = document.createElement('div'); name.className='name'; name.textContent = prettifyName(f);
+        const meta = document.createElement('div'); meta.className='meta'; meta.textContent = 'Web Designer • 5 yrs';
+        const edu = document.createElement('div'); edu.className='meta'; edu.textContent = 'Bachelor Degree';
+        const salary = document.createElement('div'); salary.className='salary'; salary.textContent = '$40,000';
+
+        row.appendChild(chk); row.appendChild(avatar); row.appendChild(name); row.appendChild(meta); row.appendChild(edu); row.appendChild(salary);
+        row.onclick = ()=> openFile(f);
+        area.appendChild(row);
+      });
+    }
+
+    function initialsFromName(filename){
+      const n = filename.replace(/\.txt$/i,'').replace(/[_-]/g,' ').trim();
+      const parts = n.split(/\s+/).filter(Boolean);
+      if(parts.length===0) return 'F';
+      if(parts.length===1) return parts[0].slice(0,2).toUpperCase();
+      return (parts[0][0]+parts[1][0]).toUpperCase();
+    }
+
+    function prettifyName(filename){
+      return filename.replace(/\.txt$/i,'').replace(/[_-]/g,' ').replace(/\b([a-z])/g, (m)=>m.toUpperCase());
+    }
+
+    // update renderFileList to also refresh rows
+    const _origRender = renderFileList;
+    renderFileList = function(){
+      _origRender();
+      renderListRows();
+    }

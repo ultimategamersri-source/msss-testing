@@ -203,21 +203,49 @@ def get_emotion_llm():
     return _emotion_llm
 
 # ======================
-# File operations
+# File operations with GCS fallback to local `data/` directory for dev
 # ======================
 @app.get("/files")
 def list_files():
-    bucket = storage_client.bucket(BUCKET_NAME)
-    files = [b.name for b in bucket.list_blobs()]
-    return JSONResponse(files)
+    # Try GCS first, then fallback to local data/ folder
+    try:
+        bucket = storage_client.bucket(BUCKET_NAME)
+        files = [b.name for b in bucket.list_blobs()]
+        return JSONResponse(files)
+    except Exception as e:
+        log.warning(f"⚠️ GCS list failed: {e}; falling back to local data/")
+        files = []
+        data_dir = "data"
+        if os.path.isdir(data_dir):
+            for f in os.listdir(data_dir):
+                if f.endswith('.txt'):
+                    files.append(f)
+        return JSONResponse(files)
+
 
 @app.get("/file/{filename}")
 def read_file(filename: str):
-    bucket = storage_client.bucket(BUCKET_NAME)
-    blob = bucket.blob(filename)
-    if not blob.exists():
-        return JSONResponse({"error": "File not found"}, status_code=404)
-    return JSONResponse({"filename": filename, "content": blob.download_as_text()})
+    # Try GCS blob, fallback to local file
+    try:
+        bucket = storage_client.bucket(BUCKET_NAME)
+        blob = bucket.blob(filename)
+        if blob.exists():
+            return JSONResponse({"filename": filename, "content": blob.download_as_text()})
+    except Exception as e:
+        log.debug(f"ℹ️ GCS read failed for {filename}: {e}")
+
+    # Local fallback
+    local_path = os.path.join("data", filename)
+    if os.path.exists(local_path):
+        try:
+            with open(local_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            return JSONResponse({"filename": filename, "content": content})
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    return JSONResponse({"error": "File not found"}, status_code=404)
+
 
 @app.post("/file/create")
 async def create_file(request: Request):
@@ -227,9 +255,19 @@ async def create_file(request: Request):
     if not title:
         return JSONResponse({"error": "Title required"}, status_code=400)
     filename = title.replace(" ", "_").lower() + ".txt"
-    bucket = storage_client.bucket(BUCKET_NAME)
-    bucket.blob(filename).upload_from_string(content)
-    return JSONResponse({"status": "created", "file": filename})
+    # Try upload to GCS
+    try:
+        bucket = storage_client.bucket(BUCKET_NAME)
+        bucket.blob(filename).upload_from_string(content)
+        return JSONResponse({"status": "created", "file": filename})
+    except Exception as e:
+        log.warning(f"⚠️ GCS create failed for {filename}: {e}; writing locally")
+        os.makedirs("data", exist_ok=True)
+        local_path = os.path.join("data", filename)
+        with open(local_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return JSONResponse({"status": "created-local", "file": filename})
+
 
 @app.post("/file/update")
 async def update_file(request: Request):
@@ -238,17 +276,39 @@ async def update_file(request: Request):
     content = data.get("content", "")
     if not filename:
         return JSONResponse({"error": "Filename required"}, status_code=400)
-    bucket = storage_client.bucket(BUCKET_NAME)
-    bucket.blob(filename).upload_from_string(content)
-    return JSONResponse({"status": "updated", "file": filename})
+    try:
+        bucket = storage_client.bucket(BUCKET_NAME)
+        bucket.blob(filename).upload_from_string(content)
+        return JSONResponse({"status": "updated", "file": filename})
+    except Exception as e:
+        log.warning(f"⚠️ GCS update failed for {filename}: {e}; writing locally")
+        os.makedirs("data", exist_ok=True)
+        local_path = os.path.join("data", filename)
+        with open(local_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return JSONResponse({"status": "updated-local", "file": filename})
+
 
 @app.delete("/file/{filename}")
 def delete_file(filename: str):
-    bucket = storage_client.bucket(BUCKET_NAME)
-    blob = bucket.blob(filename)
-    if blob.exists():
-        blob.delete()
-        return JSONResponse({"status": "deleted", "file": filename})
+    # Try delete from GCS, fallback to local delete
+    try:
+        bucket = storage_client.bucket(BUCKET_NAME)
+        blob = bucket.blob(filename)
+        if blob.exists():
+            blob.delete()
+            return JSONResponse({"status": "deleted", "file": filename})
+    except Exception as e:
+        log.debug(f"ℹ️ GCS delete failed for {filename}: {e}")
+
+    local_path = os.path.join("data", filename)
+    if os.path.exists(local_path):
+        try:
+            os.remove(local_path)
+            return JSONResponse({"status": "deleted-local", "file": filename})
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
     return JSONResponse({"error": "File not found"}, status_code=404)
 
 # ======================

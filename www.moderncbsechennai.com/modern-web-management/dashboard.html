@@ -43,7 +43,25 @@
 
   <!-- ===== RIGHT MAIN CONTENT VIEW ===== -->
   <main id="mainContent" class="mainContent">
-    <h2 id="activeFileTitle">Select a file to view/edit</h2>
+    <header class="topBar">
+      <div class="leftSearch">
+        <h3>Search Candidates</h3>
+      </div>
+      <div class="filters">
+        <input id="filterSkill" placeholder="Skill / Title">
+        <input id="filterSalary" placeholder="Salary Range">
+        <input id="searchFilesTop" placeholder="Input Keyword">
+        <button id="applyFilter">Apply Filter</button>
+      </div>
+      <div class="rightActions">
+        <div id="userGreeting">Hi, Admin</div>
+      </div>
+    </header>
+
+    <section id="listArea" class="listArea">
+      <!-- dynamic list rows here -->
+    </section>
+
     <div id="blocksContainer"></div>
   </main>
 

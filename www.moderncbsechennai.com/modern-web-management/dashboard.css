@@ -39,7 +39,6 @@ html,body{height:100%;margin:0;font-family:'Segoe UI',sans-serif;background:line
 .addFileBtn:hover{transform:scale(1.03)}
 
 .mainContent{flex:1;padding:22px;overflow:auto;background:linear-gradient(180deg,#ffffff,#f4f7ff)}
-
 .fileBlock{border-radius:14px;padding:14px;background:linear-gradient(180deg,#ffffff,#f8fafc);border:1px solid #e6e9ef;margin-bottom:14px;box-shadow:0 4px 18px rgba(2,6,23,.06)}
 .fileBlockHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .fileBlockTitle{font-weight:900;color:#0f1724}
@@ -52,3 +51,27 @@ textarea{width:100%;min-height:160px;border-radius:12px;padding:12px;border:1px 
 
 /* responsive */
 @media (max-width:900px){.sidebar{width:260px}}
+
+/* Left narrow purple nav to mimic mockup */
+.leftNav{width:72px;background:linear-gradient(180deg,#5b21b6,#3b82f6);color:#fff;display:flex;flex-direction:column;align-items:center;padding:18px 8px;gap:14px}
+.leftNav .logo{width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-weight:900}
+.leftNav button{background:transparent;border:none;color:#fff;cursor:pointer;padding:8px;border-radius:10px}
+
+/* topBar */
+.topBar{display:flex;align-items:center;gap:16px;padding:12px 8px;border-radius:10px;background:#fff;margin-bottom:16px;box-shadow:0 6px 18px rgba(2,6,23,.04)}
+.topBar h3{margin:0;color:#111;font-weight:700}
+.topBar .filters{display:flex;flex:1;gap:10px;align-items:center}
+.topBar input{padding:8px 10px;border-radius:8px;border:1px solid #e6e9ef}
+.topBar button{padding:8px 12px;border-radius:8px;background:#06b6d4;color:#fff;border:none;cursor:pointer}
+
+/* List area rows (candidates style) */
+.listArea{display:flex;flex-direction:column;gap:10px}
+.listRow{display:flex;align-items:center;gap:12px;padding:14px;border-radius:10px;background:#fff;border:1px solid #eef2ff}
+.listRow .check{width:24px}
+.listRow .avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#ffd166,#ff7b7b);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800}
+.listRow .name{flex:1;font-weight:700}
+.listRow .meta{width:160px;color:var(--muted);font-size:13px}
+.listRow .salary{width:140px;font-weight:800;text-align:right}
+
+/* small screen tweak */
+@media(max-width:800px){.topBar{flex-direction:column;align-items:stretch}.listRow{flex-direction:column;align-items:flex-start}}
