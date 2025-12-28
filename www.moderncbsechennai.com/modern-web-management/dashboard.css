@@ -173,3 +173,80 @@ textarea {
   font-family: monospace;
   font-size: 14px;
 }
+body, html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+#passwordOverlay {
+  position: fixed;
+  top:0; left:0; right:0; bottom:0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(270deg, #ff6b6b, #6bc1ff, #feca57, #48dbfb);
+  background-size: 800% 800%;
+  animation: gradientBG 12s ease infinite;
+}
+
+@keyframes gradientBG {
+  0%{background-position:0% 50%;}
+  50%{background-position:100% 50%;}
+  100%{background-position:0% 50%;}
+}
+
+#passwordBox {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 30px 40px;
+  border-radius: 20px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+  text-align: center;
+  width: 350px;
+  backdrop-filter: blur(8px);
+}
+
+#passwordBox h2 {
+  margin-bottom: 20px;
+  color: #333;
+  font-size: 24px;
+}
+
+#passwordBox input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 15px;
+  border-radius: 10px;
+  border: 2px solid #ccc;
+  font-size: 16px;
+  outline: none;
+  transition: border 0.3s;
+}
+
+#passwordBox input:focus {
+  border-color: #6c5ce7;
+}
+
+#passwordBox button {
+  padding: 10px 20px;
+  font-size: 16px;
+  border:none;
+  border-radius:10px;
+  cursor:pointer;
+  background: linear-gradient(90deg,#6c5ce7,#00b894);
+  color: #fff;
+  font-weight: bold;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+#passwordBox button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+}
+
+#passwordError {
+  color: red;
+  margin-top: 10px;
+  font-size: 14px;
+}

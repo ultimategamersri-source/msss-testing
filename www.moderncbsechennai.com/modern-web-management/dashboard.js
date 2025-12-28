@@ -172,3 +172,18 @@ async function createFile(){
     renderFileList();
   }catch(err){console.error(err);}
 }
+
+function checkPassword() {
+  const pass = document.getElementById("dashboardPassword").value;
+  const errorBox = document.getElementById("passwordError");
+
+  if(pass === DASHBOARD_PASSWORD){
+    document.getElementById("passwordOverlay").style.display = "none";
+    document.getElementById("dashboardContainer").style.display = "flex";
+    // Load your files or dashboard
+    loadFiles();
+  } else {
+    errorBox.textContent = "Incorrect password! Try again.";
+    document.getElementById("dashboardPassword").value = "";
+  }
+}
