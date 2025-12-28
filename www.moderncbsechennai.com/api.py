@@ -31,7 +31,7 @@ BUCKET_NAME = "msss-text-files"
 # FastAPI app + CORS setup
 # ----------------------
 app = FastAPI(title="MSSS Backend", version="1.0.0")
-allowed_origins = ["https://modernschooltesting.netlify.app","https://schooltesting3.netlify.app"]
+allowed_origins = ["https://modernschooltesting.netlify.app","https://schooltesting3.netlify.app","https://modern-web-management.netlify.app/"]
 
 app.add_middleware(
     CORSMiddleware,
