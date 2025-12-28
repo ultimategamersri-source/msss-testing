@@ -14,7 +14,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from google.cloud import storage
+from fastapi import HTTPException
 
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
+
+def check_password(pw: str):
+    if pw != DASHBOARD_PASSWORD:
+        raise HTTPException(status_code=403, detail="Invalid password")
 # ======================
 # Google Cloud Storage
 # ======================
@@ -304,6 +310,17 @@ def llm_health():
 async def chat(payload: dict):
     msg = payload.get("message", "")
     return {"reply": f"Echo: {msg}"}
+
+@app.post("/auth-check")
+def auth_check(data: dict):
+    if data.get("password") == DASHBOARD_PASSWORD:
+        return {"success": True}
+    return {"success": False}
+
+@app.post("/file/update")
+def update_file(payload: dict):
+    check_password(payload.get("password"))
+    ...
 
 # ======================
 # Math Utilities

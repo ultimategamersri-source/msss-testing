@@ -86,3 +86,35 @@ async function deleteFile() {
   window.activeFile = null;
   loadFiles();
 }
+// ===============================
+// SIMPLE LOGIN
+// ===============================
+let DASH_PASSWORD = null;
+
+async function login() {
+  const input = prompt("Enter dashboard password:");
+  const res = await fetch(`${API_BASE}/auth-check`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ password: input })
+  });
+
+  const data = await res.json();
+  if(data.success){
+    DASH_PASSWORD = input;
+    alert("Logged in!");
+    loadFiles(); // auto load after login
+  } else {
+    alert("Wrong password");
+    DASH_PASSWORD = null;
+  }
+}
+await fetch(`${API_BASE}/file/update`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    password: DASH_PASSWORD,
+    filename: window.activeFile,
+    content: document.getElementById("editor").value
+  })
+});
