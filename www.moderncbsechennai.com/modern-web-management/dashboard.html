@@ -10,6 +10,7 @@
 
 <!-- ===== PASSWORD OVERLAY ===== -->
 <div id="passwordOverlay" class="password-overlay">
+  <div class="password-backdrop"></div>
   <div class="password-container">
     <div class="password-box">
       <div class="password-icon">🔒</div>
@@ -54,6 +55,10 @@
 
   <!-- ===== RIGHT MAIN CONTENT VIEW ===== -->
   <main id="mainContent" class="main-content">
+    <div class="main-header">
+      <h2>File Manager</h2>
+      <button id="changePasswordBtn" class="change-password-btn" title="Change Password">🔑 Change Password</button>
+    </div>
     <div id="contentArea" class="content-area">
       <!-- File content blocks will be dynamically added here -->
       <div class="welcome-message" id="welcomeMessage">
@@ -87,6 +92,21 @@
       <button id="createFileConfirmBtn" class="btn-primary">Create</button>
       <button id="createFileCancelBtn" class="btn-secondary">Cancel</button>
     </div>
+  </div>
+</div>
+
+<!-- ===== CHANGE PASSWORD MODAL ===== -->
+<div id="changePasswordModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>Change Password</h3>
+    <input type="password" id="oldPasswordInput" placeholder="Current Password" autocomplete="off">
+    <input type="password" id="newPasswordInput" placeholder="New Password" autocomplete="off">
+    <input type="password" id="confirmPasswordInput" placeholder="Confirm New Password" autocomplete="off">
+    <div class="modal-actions">
+      <button id="changePasswordConfirmBtn" class="btn-primary">Change Password</button>
+      <button id="changePasswordCancelBtn" class="btn-secondary">Cancel</button>
+    </div>
+    <p id="changePasswordError" class="error-message"></p>
   </div>
 </div>
 

@@ -62,10 +62,23 @@ async function loadFiles() {
   listEl.innerHTML = '<div class="loading">Loading files...</div>';
   
   try {
-    const res = await fetch(`${API_BASE}/files`);
-    if (!res.ok) throw new Error('Failed to fetch files');
+    const res = await fetch(`${API_BASE}/files`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      mode: 'cors'
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('Response error:', errorText);
+      throw new Error(`Failed to fetch files: ${res.status} ${res.statusText}`);
+    }
     
     const data = await res.json();
+    console.log('Files loaded:', data);
+    
     filesData = Array.isArray(data) ? data : (data.files || []);
     
     if (filesData.length === 0) {
@@ -75,7 +88,8 @@ async function loadFiles() {
     }
   } catch (err) {
     console.error('Load files error:', err);
-    listEl.innerHTML = '<div class="error-state">Failed to load files. Please refresh the page.</div>';
+    listEl.innerHTML = `<div class="error-state">Failed to load files: ${err.message}. Please check your connection and try again.</div>`;
+    showNotification(`Failed to load files: ${err.message}`, 'error');
   }
 }
 
@@ -177,10 +191,21 @@ async function openFile(filename) {
   }
   
   try {
-    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`);
-    if (!res.ok) throw new Error('File not found');
+    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      mode: 'cors'
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: 'File not found' }));
+      throw new Error(errorData.error || 'File not found');
+    }
     
     const data = await res.json();
+    console.log(`✅ File opened: ${filename}`);
     addFileBlock(filename, data.content || '');
     
     // Mark as open in sidebar
@@ -190,7 +215,7 @@ async function openFile(filename) {
     }
   } catch (err) {
     console.error('Open file error:', err);
-    alert(`Failed to open file: ${filename}`);
+    showNotification(`Failed to open file: ${err.message}`, 'error');
   }
 }
 
@@ -530,6 +555,73 @@ function toggleSearch() {
   }
 }
 
+// === Change Password ===
+function showChangePasswordModal() {
+  const modal = document.getElementById('changePasswordModal');
+  document.getElementById('oldPasswordInput').value = '';
+  document.getElementById('newPasswordInput').value = '';
+  document.getElementById('confirmPasswordInput').value = '';
+  const errorEl = document.getElementById('changePasswordError');
+  errorEl.textContent = '';
+  errorEl.style.display = 'none';
+  modal.classList.remove('hidden');
+  document.getElementById('oldPasswordInput').focus();
+}
+
+async function confirmChangePassword() {
+  const oldPassword = document.getElementById('oldPasswordInput').value.trim();
+  const newPassword = document.getElementById('newPasswordInput').value.trim();
+  const confirmPassword = document.getElementById('confirmPasswordInput').value.trim();
+  const errorEl = document.getElementById('changePasswordError');
+  
+  errorEl.style.display = 'none';
+  errorEl.textContent = '';
+  
+  if (!oldPassword || !newPassword || !confirmPassword) {
+    errorEl.textContent = 'All fields are required';
+    errorEl.style.display = 'block';
+    return;
+  }
+  
+  if (newPassword !== confirmPassword) {
+    errorEl.textContent = 'New passwords do not match';
+    errorEl.style.display = 'block';
+    return;
+  }
+  
+  if (newPassword.length < 4) {
+    errorEl.textContent = 'New password must be at least 4 characters';
+    errorEl.style.display = 'block';
+    return;
+  }
+  
+  try {
+    const res = await fetch(`${API_BASE}/change-password`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ oldPassword, newPassword })
+    });
+    
+    const data = await res.json();
+    
+    if (data && data.success) {
+      showNotification('Password changed successfully!', 'success');
+      document.getElementById('changePasswordModal').classList.add('hidden');
+    } else {
+      errorEl.textContent = data.error || 'Failed to change password';
+      errorEl.style.display = 'block';
+    }
+  } catch (err) {
+    console.error('Change password error:', err);
+    errorEl.textContent = 'Failed to change password. Please try again.';
+    errorEl.style.display = 'block';
+  }
+}
+
+function cancelChangePassword() {
+  document.getElementById('changePasswordModal').classList.add('hidden');
+}
+
 // === Notification System ===
 function showNotification(message, type = 'info') {
   const notification = document.createElement('div');
@@ -566,6 +658,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('searchToggleBtn').addEventListener('click', toggleSearch);
   document.getElementById('searchFiles').addEventListener('input', filterFiles);
   
+  // Change password
+  document.getElementById('changePasswordBtn').addEventListener('click', showChangePasswordModal);
+  document.getElementById('changePasswordConfirmBtn').addEventListener('click', confirmChangePassword);
+  document.getElementById('changePasswordCancelBtn').addEventListener('click', cancelChangePassword);
+  
   // Modal handlers
   document.getElementById('renameConfirmBtn').addEventListener('click', confirmRename);
   document.getElementById('renameCancelBtn').addEventListener('click', cancelRename);
@@ -585,6 +682,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   
+  document.getElementById('changePasswordModal').addEventListener('click', (e) => {
+    if (e.target.id === 'changePasswordModal') {
+      cancelChangePassword();
+    }
+  });
+  
   // Enter key in rename input
   document.getElementById('renameInput').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -601,6 +704,17 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (e.key === 'Escape') {
       cancelCreateFile();
     }
+  });
+  
+  // Enter key in change password inputs
+  ['oldPasswordInput', 'newPasswordInput', 'confirmPasswordInput'].forEach(id => {
+    document.getElementById(id).addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        confirmChangePassword();
+      } else if (e.key === 'Escape') {
+        cancelChangePassword();
+      }
+    });
   });
   
   // Focus password input on load

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from google.cloud import storage
 from fastapi import HTTPException
 
-DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD")
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "modernSchool2025")
 
 def check_password(pw: str):
     if pw != DASHBOARD_PASSWORD:
@@ -31,12 +31,21 @@ BUCKET_NAME = "msss-text-files"
 # FastAPI app + CORS setup
 # ----------------------
 app = FastAPI(title="MSSS Backend", version="1.0.0")
-allowed_origins = ["https://modernschooltesting.netlify.app","https://schooltesting3.netlify.app","https://modern-web-management.netlify.app/"]
+allowed_origins = [
+    "https://modernschooltesting.netlify.app",
+    "https://schooltesting3.netlify.app",
+    "https://modern-web-management.netlify.app",
+    "http://localhost:3000",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_origins=allowed_origins if not os.getenv("ALLOW_ALL_ORIGINS", "false").lower() == "true" else ["*"],
+    allow_credentials=True if not os.getenv("ALLOW_ALL_ORIGINS", "false").lower() == "true" else False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
@@ -278,7 +287,9 @@ async def update_file(request: Request):
         return JSONResponse({"error": "Filename required"}, status_code=400)
     try:
         bucket = storage_client.bucket(BUCKET_NAME)
-        bucket.blob(filename).upload_from_string(content)
+        blob = bucket.blob(filename)
+        blob.upload_from_string(content, content_type="text/plain")
+        log.info(f"✅ Successfully updated file in GCS: {filename}")
         return JSONResponse({"status": "updated", "file": filename})
     except Exception as e:
         log.warning(f"⚠️ GCS update failed for {filename}: {e}; writing locally")
@@ -376,6 +387,24 @@ def auth_check(data: dict):
     if data.get("password") == DASHBOARD_PASSWORD:
         return {"success": True}
     return {"success": False}
+
+@app.post("/change-password")
+async def change_password(request: Request):
+    global DASHBOARD_PASSWORD
+    data = await request.json()
+    old_password = data.get("oldPassword")
+    new_password = data.get("newPassword")
+    
+    if old_password != DASHBOARD_PASSWORD:
+        return JSONResponse({"success": False, "error": "Current password is incorrect"}, status_code=403)
+    
+    if not new_password or len(new_password) < 4:
+        return JSONResponse({"success": False, "error": "New password must be at least 4 characters"}, status_code=400)
+    
+    # Update the password (in production, you'd want to persist this)
+    DASHBOARD_PASSWORD = new_password
+    log.info("Password changed successfully")
+    return JSONResponse({"success": True, "message": "Password changed successfully"})
 
 # ======================
 # Math Utilities
