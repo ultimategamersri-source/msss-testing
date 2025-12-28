@@ -1,140 +1,175 @@
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: #f3f4f6;
+  font-family: 'Segoe UI', sans-serif;
   margin: 0;
-  padding: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
-.dashboard-container {
-  max-width: 1200px;
-  margin: 40px auto;
-  padding: 20px;
-}
-
-h1 {
-  text-align: center;
-  color: #333;
-}
-
-.hidden {
-  display: none;
-}
-
-/* Modal for password */
-.modal {
+#passwordOverlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0,0,0,0.5);
+  top:0; left:0; right:0; bottom:0;
+  background: rgba(0,0,0,0.7);
   display: flex;
   justify-content: center;
   align-items: center;
 }
-.modal-content {
+
+#passwordBox {
   background: #fff;
   padding: 30px;
   border-radius: 12px;
   text-align: center;
+  width: 300px;
 }
-.modal-content input {
-  padding: 10px;
-  width: 70%;
-  margin: 10px 0;
-  font-size: 1em;
+
+#passwordBox input {
+  width: 100%;
+  padding: 8px;
+  margin-top: 10px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
 }
-.modal-content button {
-  padding: 10px 20px;
-  font-size: 1em;
-  background: #4f46e5;
+
+#passwordBox button {
+  margin-top: 15px;
+  padding: 8px 12px;
+  background: #7873f5;
   color: #fff;
   border: none;
   border-radius: 6px;
   cursor: pointer;
 }
-.modal-content button:hover {
-  background: #4338ca;
-}
-.error-msg {
+
+#passwordError {
   color: red;
-  margin-top: 10px;
-}
-
-/* Layout */
-.dashboard {
-  display: flex;
-  gap: 20px;
-  margin-top: 20px;
-}
-.sidebar {
-  width: 300px;
-  background: #fff;
-  padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-}
-.sidebar h2 {
-  margin-top: 0;
-}
-#fileList {
-  max-height: 400px;
-  overflow-y: auto;
-  margin-bottom: 10px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 5px;
-  background: #f9f9f9;
-}
-#fileList div {
-  padding: 6px;
-  cursor: pointer;
-}
-#fileList div:hover {
-  background: #e0e7ff;
-}
-.sidebar button {
-  display: block;
-  width: 100%;
   margin-top: 8px;
-  padding: 10px;
-  border: none;
-  background: #4f46e5;
-  color: white;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.sidebar button:hover {
-  background: #4338ca;
+  font-size: 14px;
 }
 
-.editor-section {
-  flex: 1;
+#dashboardContainer {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 320px;
+  background: linear-gradient(180deg,#ffeaa7,#fab1a0);
+  padding: 15px;
+  overflow-y: auto;
+  border-right: 2px solid #ddd;
+}
+
+.sidebar-header {
+  margin-bottom: 15px;
+}
+
+#searchFiles {
+  width: 100%;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  margin-bottom: 10px;
+}
+
+#fileList {
   display: flex;
   flex-direction: column;
-}
-.editor-buttons {
-  margin: 8px 0;
-}
-.editor-buttons button {
-  padding: 8px 16px;
-  margin-right: 8px;
-  border: none;
-  border-radius: 6px;
-  background: #4f46e5;
-  color: #fff;
-  cursor: pointer;
-}
-.editor-buttons button:hover {
-  background: #4338ca;
+  gap: 8px;
 }
 
-#preview {
+.file-item {
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: bold;
+  color: #fff;
+  position: relative;
+  user-select: none;
+}
+
+.file-item:hover {
+  transform: scale(1.05);
+  filter: brightness(1.2);
+}
+
+/* Colorful gradient stripes for file items */
+.file-item:nth-child(3n){background:linear-gradient(135deg,#ff6b6b,#f06595);}
+.file-item:nth-child(3n+1){background:linear-gradient(135deg,#1dd1a1,#10ac84);}
+.file-item:nth-child(3n+2){background:linear-gradient(135deg,#54a0ff,#2e86de);}
+
+/* Editable rename on long press */
+.file-item[contenteditable="true"] {
+  border: 2px dashed #333;
+  padding: 8px 12px;
+}
+
+/* Add new file button */
+.addFileBtn {
+  margin-top: 15px;
+  padding: 10px;
+  width: 100%;
+  border:none;
+  border-radius:6px;
+  background: #6c5ce7;
+  color:#fff;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+.addFileBtn:hover {background:#341f97;}
+
+/* Main content */
+.mainContent {
+  flex: 1;
   padding: 15px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #fff;
-  min-height: 200px;
-  margin-top: 10px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: #fff;
+}
+
+/* Individual file block */
+.fileBlock {
+  border-radius: 12px;
+  padding: 15px;
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.fileBlock h3 {
+  margin: 0 0 10px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 18px;
+  color: #333;
+}
+
+.fileBlock button {
+  margin-left: 5px;
+  padding: 4px 8px;
+  border:none;
+  border-radius:4px;
+  cursor:pointer;
+}
+
+.saveBtn {background:#4ecdc4; color:#fff;}
+.deleteBtn {background:#ff6b6b; color:#fff;}
+.renameBtn {background:#ffa502; color:#fff;}
+
+textarea {
+  width: 100%;
+  min-height:150px;
+  resize: vertical;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-family: monospace;
+  font-size: 14px;
 }

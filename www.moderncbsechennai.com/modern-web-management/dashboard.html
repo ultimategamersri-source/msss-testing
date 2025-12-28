@@ -1,56 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Modern School Dashboard</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- CodeMirror -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/codemirror.min.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.15/theme/material-darker.min.css">
-
-  <!-- Custom CSS -->
-  <link rel="stylesheet" href="dashboard.css">
-
-  <!-- Marked.js for preview -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/5.1.1/marked.min.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modern School Dashboard</title>
+<link rel="stylesheet" href="db.css">
 </head>
 <body>
-  <div class="dashboard-container">
-    <h1>Modern School Dashboard</h1>
-    
-    <!-- Password Modal -->
-    <div id="passwordModal" class="modal">
-      <div class="modal-content">
-        <h2>Enter Dashboard Password</h2>
-        <input type="password" id="dashboardPassword" placeholder="Password" />
-        <button id="loginBtn">Login</button>
-        <p id="loginError" class="error-msg"></p>
-      </div>
-    </div>
 
-    <!-- Main Dashboard -->
-    <div id="dashboard" class="hidden">
-      <div class="sidebar">
-        <h2>Files</h2>
-        <div id="fileList">Loading...</div>
-        <button id="refreshBtn">Refresh</button>
-        <button id="createBtn">New File</button>
-      </div>
+<div id="passwordOverlay">
+  <div id="passwordBox">
+    <h2>Enter Dashboard Password</h2>
+    <input type="password" id="dashboardPassword" placeholder="Password">
+    <button onclick="checkPassword()">Enter</button>
+    <p id="passwordError"></p>
+  </div>
+</div>
 
-      <div class="editor-section">
-        <textarea id="editor"></textarea>
-        <div class="editor-buttons">
-          <button id="saveBtn">Save</button>
-          <button id="deleteBtn">Delete</button>
-        </div>
-        <h3>Preview:</h3>
-        <div id="preview"></div>
-      </div>
+<div id="dashboardContainer" style="display:none;">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h2>Projects & Files</h2>
+      <input type="text" id="searchFiles" placeholder="Search..." oninput="filterFiles()">
     </div>
+    <div id="fileList"></div>
+    <button class="addFileBtn" onclick="createFile()">+ Add New File</button>
   </div>
 
-  <!-- JS -->
-  <script type="module" src="dashboard.js"></script>
+  <div class="mainContent" id="mainContent">
+    <!-- File contents appear here -->
+  </div>
+</div>
+
+<script src="db.js"></script>
 </body>
 </html>
