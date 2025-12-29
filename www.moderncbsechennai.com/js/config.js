@@ -27,3 +27,4 @@ async function sendMessage(userMessage, chatHistory = []) {
 
 // Export function for use elsewhere
 export { sendMessage };
+export { API };
