@@ -294,7 +294,6 @@ async def update_file(request: Request):
         # Refresh vector stores after file update
         try:
             refresh_vector_stores()
-            load_ncert_vectors()
             log.info("✅ Vector stores refreshed after file update")
         except Exception as e:
             log.warning(f"⚠️ Vector refresh failed: {e}")
@@ -310,7 +309,6 @@ async def update_file(request: Request):
         # Refresh vectors even for local updates
         try:
             refresh_vector_stores()
-            load_ncert_vectors()
         except Exception as e:
             log.warning(f"⚠️ Vector refresh failed: {e}")
         
@@ -617,28 +615,6 @@ def refresh_vector_stores():
             log.warning(f"⚠️ Failed to build retriever for '{file}': {e}")
     log.info(f"✅ Vector stores loaded: {list(vector_stores.keys())}")
 
-NCERT_DATASETS = {
-    "ncert_maths": "data/ncert_maths.txt",
-    "ncert_physics": "data/ncert_physics.txt",
-    "ncert_chemistry": "data/ncert_chemistry.txt",
-}
-
-def load_ncert_vectors():
-    if load_vector_store is None:
-        log.info("ℹ️ load_vector_store unavailable; skipping NCERT.")
-        return
-    loaded=[]
-    for name,path in NCERT_DATASETS.items():
-        if os.path.exists(path):
-            try:
-                retriever = load_vector_store()
-                if retriever:
-                    vector_stores[name]=retriever
-                    loaded.append(name)
-            except Exception as e:
-                log.warning(f"⚠️ Failed to load NCERT '{name}': {e}")
-    log.info(f"📘 NCERT datasets loaded: {loaded}")
-
 # ======================
 # Helper utilities
 # ======================
@@ -671,7 +647,6 @@ class Query(BaseModel):
 def admin_refresh():
     try:
         refresh_vector_stores()
-        load_ncert_vectors()
         return {"ok": True,"message":"Vectors refreshed","stores": list(vector_stores.keys())}
     except Exception as e:
         return JSONResponse(status_code=500, content={"ok": False,"error": str(e)})
@@ -847,7 +822,6 @@ async def startup_event():
     # --- Optional vector refresh ---
     if REFRESH_VECTORS_ON_STARTUP:
         refresh_vector_stores()
-        load_ncert_vectors()
         log.info("✅ Vector stores + NCERT data loaded.")
     else:
         log.info("⏭️ Skipping vector refresh/load on startup.")
