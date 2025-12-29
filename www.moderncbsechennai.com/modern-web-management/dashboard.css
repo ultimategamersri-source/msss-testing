@@ -313,7 +313,8 @@ html, body {
 }
 
 .file-item {
-  padding: 16px 18px;
+  padding: 0 18px;
+  height: 52px;
   border-radius: 14px;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -324,6 +325,9 @@ html, body {
   color: white;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .file-item::before {
