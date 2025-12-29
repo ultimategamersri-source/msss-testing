@@ -367,6 +367,12 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: center;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 0;
 }
 
 .loading, .empty-state, .error-state {
@@ -411,12 +417,40 @@ html, body {
   font-weight: 900;
 }
 
+/* ===== TOP BANNER ===== */
+.top-banner {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #4facfe 100%);
+  background-size: 400% 400%;
+  animation: gradientShift 8s ease infinite;
+  padding: 24px 32px;
+  text-align: center;
+  box-shadow: var(--shadow-md);
+  border-bottom: 3px solid rgba(255, 255, 255, 0.2);
+}
+
+.ai-assistant-title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 900;
+  color: white;
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  letter-spacing: 2px;
+  animation: titlePulse 3s ease-in-out infinite;
+}
+
+@keyframes titlePulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.95; }
+}
+
 /* ===== MAIN CONTENT ===== */
 .main-content {
   flex: 1;
   overflow-y: auto;
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .main-content::-webkit-scrollbar {

@@ -42,13 +42,6 @@ async function checkPassword() {
   }
 }
 
-// Demo access (bypass password for development)
-async function demoAccess() {
-  isAuthenticated = true;
-  document.getElementById('passwordOverlay').style.display = 'none';
-  document.getElementById('dashboardContainer').classList.remove('blurred');
-  await loadFiles();
-}
 
 function showPasswordError(msg) {
   const err = document.getElementById('passwordError');
@@ -114,6 +107,11 @@ function renderFileList() {
     const title = document.createElement('div');
     title.className = 'file-title';
     title.textContent = prettifyFileName(filename);
+    title.style.textAlign = 'center';
+    title.style.width = '100%';
+    title.style.display = 'flex';
+    title.style.alignItems = 'center';
+    title.style.justifyContent = 'center';
     
     item.appendChild(title);
     
@@ -644,7 +642,6 @@ function showNotification(message, type = 'info') {
 document.addEventListener('DOMContentLoaded', () => {
   // Password handlers
   document.getElementById('enterBtn').addEventListener('click', checkPassword);
-  document.getElementById('demoBtn').addEventListener('click', demoAccess);
   
   // Enter key on password input
   document.getElementById('dashboardPassword').addEventListener('keypress', (e) => {

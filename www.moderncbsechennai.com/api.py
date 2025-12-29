@@ -290,6 +290,15 @@ async def update_file(request: Request):
         blob = bucket.blob(filename)
         blob.upload_from_string(content, content_type="text/plain")
         log.info(f"✅ Successfully updated file in GCS: {filename}")
+        
+        # Refresh vector stores after file update
+        try:
+            refresh_vector_stores()
+            load_ncert_vectors()
+            log.info("✅ Vector stores refreshed after file update")
+        except Exception as e:
+            log.warning(f"⚠️ Vector refresh failed: {e}")
+        
         return JSONResponse({"status": "updated", "file": filename})
     except Exception as e:
         log.warning(f"⚠️ GCS update failed for {filename}: {e}; writing locally")
@@ -297,6 +306,14 @@ async def update_file(request: Request):
         local_path = os.path.join("data", filename)
         with open(local_path, "w", encoding="utf-8") as f:
             f.write(content)
+        
+        # Refresh vectors even for local updates
+        try:
+            refresh_vector_stores()
+            load_ncert_vectors()
+        except Exception as e:
+            log.warning(f"⚠️ Vector refresh failed: {e}")
+        
         return JSONResponse({"status": "updated-local", "file": filename})
 
 
@@ -392,19 +409,35 @@ def auth_check(data: dict):
 async def change_password(request: Request):
     global DASHBOARD_PASSWORD
     data = await request.json()
-    old_password = data.get("oldPassword")
-    new_password = data.get("newPassword")
+    old_password = data.get("oldPassword", "").strip()
+    new_password = data.get("newPassword", "").strip()
     
-    if old_password != DASHBOARD_PASSWORD:
+    # Get current password from env (always read fresh)
+    current_password = os.getenv("DASHBOARD_PASSWORD", "modernSchool2025")
+    
+    if not old_password or old_password != current_password:
+        log.warning(f"Password change failed: incorrect old password")
         return JSONResponse({"success": False, "error": "Current password is incorrect"}, status_code=403)
     
     if not new_password or len(new_password) < 4:
         return JSONResponse({"success": False, "error": "New password must be at least 4 characters"}, status_code=400)
     
-    # Update the password (in production, you'd want to persist this)
+    # Store new password in GCS for persistence
+    try:
+        bucket = storage_client.bucket(BUCKET_NAME)
+        blob = bucket.blob("_dashboard_password.txt")
+        blob.upload_from_string(new_password, content_type="text/plain")
+        log.info("Password saved to GCS")
+    except Exception as e:
+        log.warning(f"Failed to save password to GCS: {e}")
+    
+    # Update in-memory password
     DASHBOARD_PASSWORD = new_password
+    # Also update env (for current session)
+    os.environ["DASHBOARD_PASSWORD"] = new_password
+    
     log.info("Password changed successfully")
-    return JSONResponse({"success": True, "message": "Password changed successfully"})
+    return JSONResponse({"success": True, "message": "Password changed successfully. Please update GCP env var: --set-env-vars DASHBOARD_PASSWORD=\"" + new_password + "\""})
 
 # ======================
 # Math Utilities
