@@ -19,7 +19,6 @@ document.querySelector("#sendBtn").addEventListener("click", async () => {
 });
 
 // 1) Use Netlify proxy. Your _redirects already points /api/* to Cloud Run.
-const API = "https://msss-backend-961983851669.asia-south1.run.app";
 
 
 // --- Small status banner so you can see connectivity at a glance
