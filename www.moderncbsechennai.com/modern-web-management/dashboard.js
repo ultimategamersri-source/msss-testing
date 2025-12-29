@@ -107,11 +107,6 @@ function renderFileList() {
     const title = document.createElement('div');
     title.className = 'file-title';
     title.textContent = prettifyFileName(filename);
-    title.style.textAlign = 'center';
-    title.style.width = '100%';
-    title.style.display = 'flex';
-    title.style.alignItems = 'center';
-    title.style.justifyContent = 'center';
     
     item.appendChild(title);
     
