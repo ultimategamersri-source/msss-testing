@@ -378,7 +378,18 @@ def index():
         "location": GOOGLE_CLOUD_LOCATION,
         "vectors_refreshed_on_startup": REFRESH_VECTORS_ON_STARTUP
     })
+
+@app.get("/files/{filename}")
+def get_file(filename: str):
+    client = storage.Client()
+    bucket = client.bucket(BUCKET_NAME)
+    blob = bucket.blob(filename)
+
+    if not blob.exists():
+        raise HTTPException(status_code=404, detail="Not Found")
     
+    return blob.download_as_text()
+   
 @app.get("/health")
 def health():
     return {"status": "ok", "allowed": allowed_origins}
@@ -554,7 +565,7 @@ FAREWELLS = ["bye", "goodbye", "see you", "farewell"]
 def check_greeting(q: str):
     q=q.lower()
     if any(g in q for g in GREETINGS):
-        return "Welcome to Modern Senior Secondary School! I'm Brightly, your assistant. How can I help you today?"
+        return "Welcome to ABC School! I'm Brightly, your assistant. How can I help you today?"
     return None
 
 def check_farewell(q: str):
@@ -702,15 +713,7 @@ async def ask(query: Query):
             answer=step_result or solve_math_expression(sq)
         if not answer:
             context=""
-            MANUAL_CACHE_FILE="answer_cache.json"
-            if os.path.exists(MANUAL_CACHE_FILE):
-                try:
-                    with open(MANUAL_CACHE_FILE,"r",encoding="utf-8") as f:
-                        manual_cache=json.load(f)
-                    if sq in manual_cache:
-                        context+=str(manual_cache[sq].get("answer",""))+"\n"
-                except Exception as e:
-                    log.warning(f"⚠️ Manual cache load error: {e}")
+
             for store_name,retriever in vector_stores.items():
                 try:
                     results=safe_retrieve(retriever,sq)
@@ -723,31 +726,57 @@ async def ask(query: Query):
                 context+="\n--- Previous conversation ---\n"+conv_context
             if not context.strip():
                 context="No data found."
-            prompt=f"""
-You are called and are Brightly — the official AI assistant of Modern Senior Secondary School, Chennai.
-You are also a helpful school AI tutor.
-Explain and solve problems in math, physics, and chemistry like an experienced teacher.
-When students ask a study question:
-- Give short, clear explanations with steps.
-- Use plain, teacher-style English.
+            prompt = f"""
+You are Brightly, the official AI assistant of ABC school, Chennai.
+in 2026
+RULES:
+- Answer School content ONLY using the retrieved context below but if the question is based on ncert, educational thing then give answer directly without from the context.
+- If the School info is not in context: "I currently don’t have that information in my records 
+- Allowed topics: school info, facilities, fees, reopening, events, NCERT Physics/Chemistry/Maths (6–12).
+- Not allowed: politics, religion, controversial topics. If asked:
+  "I’m not allowed to discuss that. I can help with school-related queries instead."
+- use emojis of your own where ever possible
+- you should give answers to maths, physics , chemistry questions even though they are unrelated .
 
-Knowledge Scope:
-- NCERT-based Physics, Chemistry, Maths (Classes 6–12)
-- General school information
+FORMATTING (chat bubble):
+- Max line width: 200 px.
+- the font used in the ui is comic sans ms
+- Use short lines and frequent line breaks.
+- One idea per line; no large paragraphs.
+- Never exceed 8 lines unless needed.
+- Highlight key terms with **bold**.
+- Use spacing exactly like this:
 
-Tone:
-- Friendly, conversational, natural
-- Keep responses concise
+ **Title / Summary** (do this also when asked about fee structure)
 
-Rules:
-- Avoid politics; keep school-relevant
-- If asked who created you, answer: "I was created by the technical team at Modern Senior Secondary School to assist students and parents with school-related queries."
+• short point
 
-Context:
+• short point
+
+• short point
+
+🟡 Ask if the user wants more.
+
+FORMULA FORMAT:
+**Name**:
+\( formula \)
+(short meaning)
+
+META QUESTIONS:
+If the user asks "what did I ask now?" respond with the exact previous user message.
+
+TONE:
+Friendly, simple, helpful, school-appropriate.
+
+CONTEXT:
 {context}
-Question: {sq}
-Answer:
+
+USER QUESTION:
+{sq}
+
+FINAL ANSWER (apply all rules above):
 """
+
             try:
                 answer=get_answer_llm().invoke(prompt).strip()
             except Exception as e:
