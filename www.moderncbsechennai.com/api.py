@@ -136,7 +136,7 @@ class OpenAIChatLLM:
         self.client = client
         self.model = model
         self.system_prompt = system_prompt or (
-            "You are Brightly, the official AI assistant of Modern Senior Secondary School, Chennai. "
+            "You are Brightly, the official AI assistant of ABC Senior Secondary School, Chennai. "
             "Answer in a concise, helpful, teacher-style manner."
         )
 
@@ -373,7 +373,7 @@ def index():
     if os.path.exists("index.html"):
         return FileResponse("index.html")
     return JSONResponse({
-        "message": "Modern Senior Secondary School — API online",
+        "message": "ABC Senior Secondary School — API online",
         "project": GOOGLE_CLOUD_PROJECT,
         "location": GOOGLE_CLOUD_LOCATION,
         "vectors_refreshed_on_startup": REFRESH_VECTORS_ON_STARTUP
@@ -690,10 +690,10 @@ async def ask(query: Query):
     answer=None
     lower_q=q_text.lower()
     if any(phrase in lower_q for phrase in INTENT_MAP["self_identity"]):
-        answer="I'm Brightly — your friendly Modern Senior Secondary School assistant."
+        answer="I'm Brightly — your friendly ABC Senior Secondary School assistant."
     elif any(word in lower_q for word in ["provide","offer","help","assist","what can you"]):
         answer=random.choice(["I can help you with school details, fees, admissions, exams, and staff information.",
-                              "I assist with queries about Modern Senior Secondary School — like fees, staff, or classes.",
+                              "I assist with queries about ABC Senior Secondary School — like fees, staff, or classes.",
                               "I provide details about school activities, admissions, and academic info.",
                               "I’m here to share school-related information and help you find what you need!"])
     if answer:
