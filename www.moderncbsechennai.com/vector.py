@@ -1,82 +1,161 @@
 import os
-from typing import List
+import json
+import hashlib
+import shutil
+from typing import Dict, List
+import google.auth
+from google.cloud import storage
 from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
-
-
-# Cache to avoid rebuilding on every request
-_VECTOR_CACHE = {}
-
+# ------------------ CONFIG ------------------ #
+BUCKET_NAME = "msss-text-files"
 DATA_DIR = "data"
 VECTOR_STORE_PATH = "faiss_index"
+HASH_FILE = "file_hashes.json"
 
+_VECTOR_CACHE = {}
+
+# Ensure data directory exists
+os.makedirs(DATA_DIR, exist_ok=True)
+
+
+# ------------------ Embeddings ------------------ #
 def _get_embeddings():
-    """Return OpenAI embedding model."""
     return OpenAIEmbeddings(model="text-embedding-3-small")
 
-def _read_text(file_path: str) -> str:
-    """Read text file safely."""
-    with open(file_path, "r", encoding="utf-8") as f:
-        return f.read().strip()
 
+# ------------------ Text Split ------------------ #
 def _split_text(text: str) -> List[Document]:
-    """Split large text into manageable chunks."""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1200,
-        chunk_overlap=150,
-        separators=["\n\n", "\n", " ", ""],
+        chunk_overlap=150
     )
-    chunks = splitter.split_text(text)
-    return [Document(page_content=chunk) for chunk in chunks]
+    return [Document(page_content=chunk) for chunk in splitter.split_text(text)]
 
-def load_all_files(data_dir: str = DATA_DIR) -> List[Document]:
-    """Load and split all .txt files in the data directory."""
+
+# ------------------ Hash Utils ------------------ #
+def _hash(text: str):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _load_hashes() -> Dict[str, str]:
+    if os.path.exists(HASH_FILE):
+        with open(HASH_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+
+def _save_hashes(data: Dict[str, str]):
+    with open(HASH_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+# ------------------ GCP Storage Client ------------------ #
+def get_storage_client():
+    credentials, project = google.auth.default()
+    return storage.Client(credentials=credentials, project=project)
+
+
+# ------------------ Sync Bucket Files ------------------ #
+def sync_bucket_files_to_local() -> bool:
+    print(">>> Syncing bucket files...")
+    client = get_storage_client()
+    bucket = client.bucket(BUCKET_NAME)
+
+    old_hashes = _load_hashes()
+    new_hashes = {}
+    changed = False
+    current_files = set()
+
+    # Add/update files
+    for blob in bucket.list_blobs():
+        if not blob.name.endswith(".txt"):
+            continue
+
+        current_files.add(blob.name)
+        content = blob.download_as_text()
+        digest = _hash(content)
+        new_hashes[blob.name] = digest
+        local_path = os.path.join(DATA_DIR, blob.name)
+
+        if old_hashes.get(blob.name) != digest:
+            with open(local_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            changed = True
+            print(f"⬇️ Updated → {blob.name}")
+
+    # Delete removed files locally
+    for local_file in os.listdir(DATA_DIR):
+        if local_file.endswith(".txt") and local_file not in current_files:
+            os.remove(os.path.join(DATA_DIR, local_file))
+            changed = True
+            print(f"🗑 Removed → {local_file}")
+
+    if changed:
+        _save_hashes(new_hashes)
+        print("⚠️ Changes detected → will rebuild FAISS")
+    else:
+        print("✔ No changes detected")
+
+    return changed
+
+
+# ------------------ Reset FAISS Index ------------------ #
+def _reset_index():
+    if os.path.exists(VECTOR_STORE_PATH):
+        shutil.rmtree(VECTOR_STORE_PATH)
+    _VECTOR_CACHE.clear()
+    print("🧨 FAISS index cleared")
+
+
+# ------------------ Load Documents ------------------ #
+def load_all_files() -> List[Document]:
     docs = []
-    for file in os.listdir(data_dir):
+    for file in os.listdir(DATA_DIR):
         if file.endswith(".txt"):
-            path = os.path.join(data_dir, file)
-            try:
-                text = _read_text(path)
-                docs.extend(_split_text(text))
-                print(f"✅ Loaded {file}")
-            except Exception as e:
-                print(f"⚠️ Error reading {file}: {e}")
+            path = os.path.join(DATA_DIR, file)
+            with open(path, "r", encoding="utf-8") as f:
+                docs.extend(_split_text(f.read()))
     return docs
 
+
+# ------------------ Main Loader ------------------ #
 def load_vector_store():
-    """Build or load FAISS retriever from all data files."""
     global _VECTOR_CACHE
 
-    if _VECTOR_CACHE.get("retriever"):
+    changed = sync_bucket_files_to_local()
+    if changed:
+        _reset_index()
+
+    if not changed and "retriever" in _VECTOR_CACHE:
+        print("✔ Serving from memory cache")
         return _VECTOR_CACHE["retriever"]
 
-    try:
-        if os.path.exists(VECTOR_STORE_PATH):
-            print("📂 Loading existing FAISS index...")
-            embeddings = _get_embeddings()
-            vs = FAISS.load_local(
-                VECTOR_STORE_PATH,
-                embeddings,
-                allow_dangerous_deserialization=True
-            )
-        else:
-            print("🧠 Building new FAISS index from /data...")
-            docs = load_all_files()
-            embeddings = _get_embeddings()
-            vs = FAISS.from_documents(docs, embeddings)
-            vs.save_local(VECTOR_STORE_PATH)
+    if not os.path.exists(VECTOR_STORE_PATH):
+        print("🛠 Rebuilding FAISS index...")
+        docs = load_all_files()
+        if not docs:
+            print("⚠️ No documents found.")
+            return None
+        vs = FAISS.from_documents(docs, _get_embeddings())
+        vs.save_local(VECTOR_STORE_PATH)
+    else:
+        print("📂 Loading FAISS index from disk...")
+        vs = FAISS.load_local(
+            VECTOR_STORE_PATH,
+            _get_embeddings(),
+            allow_dangerous_deserialization=True,
+        )
 
-        retriever = vs.as_retriever(search_kwargs={"k": 4})
-        _VECTOR_CACHE["retriever"] = retriever
-        print(f"✅ Vector store ready. Total docs: {len(vs.index_to_docstore_id)}")
-        return retriever
+    retriever = vs.as_retriever(search_kwargs={"k": 3})
+    _VECTOR_CACHE["retriever"] = retriever
+    print("✅ Vector store ready.")
+    return retriever
 
-    except Exception as e:
-        print(f"⚠️ load_vector_store error: {e}")
-        return None
 
+# ------------------ CLI Run Test ------------------ #
 if __name__ == "__main__":
     load_vector_store()
