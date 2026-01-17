@@ -693,31 +693,57 @@ async function deleteFile(filename) {
 // === Delete Folder ===
 async function deleteFolder(folderPath) {
   try {
-    // Get all files in the folder
-    const filesInFolder = filesData.filter(f => f.startsWith(folderPath + '/'));
+    console.log('Deleting folder:', folderPath);
+    
+    // Get all files in the folder - make sure folderPath ends with / for matching
+    const searchPath = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+    const filesInFolder = filesData.filter(f => f.startsWith(searchPath));
+    
+    console.log(`Found ${filesInFolder.length} files in folder:`, filesInFolder);
+    
+    if (filesInFolder.length === 0) {
+      showNotification('Folder is empty. Nothing to delete.', 'info');
+      await loadFiles();
+      return;
+    }
     
     // Delete all files in the folder
     let deletedCount = 0;
+    let failedCount = 0;
+    
     for (const filePath of filesInFolder) {
       try {
         const encodedPath = filePath.split('/').map(part => encodeURIComponent(part)).join('/');
+        console.log(`Deleting file: ${filePath} (encoded: ${encodedPath})`);
+        
         const res = await fetch(`${API_BASE}/file/${encodedPath}`, {
           method: 'DELETE'
         });
+        
         if (res.ok) {
           deletedCount++;
           // Remove from local state
           filesData = filesData.filter(f => f !== filePath);
           delete currentFiles[filePath];
+          console.log(`✅ Deleted: ${filePath}`);
+        } else {
+          failedCount++;
+          console.error(`❌ Failed to delete ${filePath}: ${res.status}`);
         }
       } catch (err) {
+        failedCount++;
         console.error(`Failed to delete file ${filePath}:`, err);
       }
     }
     
     // Reload files to update tree structure
     await loadFiles();
-    showNotification(`Folder deleted successfully! ${deletedCount} file(s) removed.`, 'success');
+    
+    if (deletedCount > 0) {
+      showNotification(`Folder deleted successfully! ${deletedCount} file(s) removed.${failedCount > 0 ? ` ${failedCount} file(s) failed to delete.` : ''}`, 'success');
+    } else {
+      showNotification(`Failed to delete folder. No files were deleted.`, 'error');
+    }
   } catch (err) {
     console.error('Delete folder error:', err);
     showNotification(`Failed to delete folder: ${err.message}`, 'error');
@@ -997,31 +1023,11 @@ async function showViewPasswordModal() {
   
   errorEl.textContent = '';
   errorEl.style.display = 'none';
-  passwordDisplay.value = 'Loading...';
   passwordDisplay.type = 'password';
   modal.classList.remove('hidden');
   
-  try {
-    // Try to fetch password from GCS file
-    const res = await fetch(`${API_BASE}/file/_dashboard_password.txt`, {
-      method: 'GET',
-      headers: {'Content-Type': 'application/json'},
-      mode: 'cors'
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      passwordDisplay.value = data.content || data.filename || 'Password not found in storage';
-    } else {
-      // Fallback: try to get from environment (default)
-      passwordDisplay.value = 'modernSchool2025 (default)';
-    }
-  } catch (err) {
-    console.error('View password error:', err);
-    passwordDisplay.value = 'modernSchool2025 (default)';
-    errorEl.textContent = 'Could not fetch from storage. Showing default password.';
-    errorEl.style.display = 'block';
-  }
+  // Just show the default password (no need to fetch from storage)
+  passwordDisplay.value = 'modernSchool2025';
 }
 
 function togglePasswordVisibility() {
@@ -1053,20 +1059,10 @@ function showChangePasswordModal() {
   modal.classList.remove('hidden');
   document.getElementById('oldPasswordInput').focus();
   
-  // Add a "View Password" button option in the modal
-  const modalContent = modal.querySelector('.modal-content');
-  let viewPasswordBtn = document.getElementById('viewPasswordFromChangeBtn');
-  if (!viewPasswordBtn) {
-    viewPasswordBtn = document.createElement('button');
-    viewPasswordBtn.id = 'viewPasswordFromChangeBtn';
-    viewPasswordBtn.className = 'btn-secondary';
-    viewPasswordBtn.textContent = '👁️ View Password';
-    viewPasswordBtn.style.marginTop = '10px';
-    viewPasswordBtn.addEventListener('click', () => {
-      modal.classList.add('hidden');
-      showViewPasswordModal();
-    });
-    modalContent.appendChild(viewPasswordBtn);
+  // Remove any existing view password button if it exists
+  const existingBtn = document.getElementById('viewPasswordFromChangeBtn');
+  if (existingBtn) {
+    existingBtn.remove();
   }
 }
 
@@ -1147,11 +1143,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Password handlers
   document.getElementById('enterBtn').addEventListener('click', checkPassword);
   
-  // Demo/Change Password button in password overlay
+  // View Password button in password overlay
   const demoBtn = document.getElementById('demoBtn');
   if (demoBtn) {
     demoBtn.addEventListener('click', () => {
-      showChangePasswordModal();
+      showViewPasswordModal();
     });
   }
   
