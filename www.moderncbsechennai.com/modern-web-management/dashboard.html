@@ -60,7 +60,7 @@
     </div>
     <div class="main-header">
       <h2>File Manager</h2>
-      <button id="viewPasswordBtn" class="change-password-btn" title="View Password">👁️ View Password</button>
+      <button id="viewPasswordBtn" class="change-password-btn" title="Change Password">🔑 Change Password</button>
     </div>
     <div id="contentArea" class="content-area">
       <!-- File content blocks will be dynamically added here -->
@@ -99,6 +99,21 @@
   </div>
 </div>
 
+<!-- ===== CHANGE PASSWORD MODAL ===== -->
+<div id="changePasswordModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>Change Password</h3>
+    <input type="password" id="oldPasswordInput" placeholder="Current Password" autocomplete="off">
+    <input type="password" id="newPasswordInput" placeholder="New Password" autocomplete="off">
+    <input type="password" id="confirmPasswordInput" placeholder="Confirm New Password" autocomplete="off">
+    <div class="modal-actions">
+      <button id="changePasswordConfirmBtn" class="btn-primary">Change Password</button>
+      <button id="changePasswordCancelBtn" class="btn-secondary">Cancel</button>
+    </div>
+    <p id="changePasswordError" class="error-message"></p>
+  </div>
+</div>
+
 <!-- ===== VIEW PASSWORD MODAL ===== -->
 <div id="viewPasswordModal" class="modal hidden">
   <div class="modal-content">
@@ -115,21 +130,6 @@
       <button id="viewPasswordChangeBtn" class="btn-secondary">Change Password</button>
     </div>
     <p id="viewPasswordError" class="error-message"></p>
-  </div>
-</div>
-
-<!-- ===== CHANGE PASSWORD MODAL ===== -->
-<div id="changePasswordModal" class="modal hidden">
-  <div class="modal-content">
-    <h3>Change Password</h3>
-    <input type="password" id="oldPasswordInput" placeholder="Current Password" autocomplete="off">
-    <input type="password" id="newPasswordInput" placeholder="New Password" autocomplete="off">
-    <input type="password" id="confirmPasswordInput" placeholder="Confirm New Password" autocomplete="off">
-    <div class="modal-actions">
-      <button id="changePasswordConfirmBtn" class="btn-primary">Change Password</button>
-      <button id="changePasswordCancelBtn" class="btn-secondary">Cancel</button>
-    </div>
-    <p id="changePasswordError" class="error-message"></p>
   </div>
 </div>
 
