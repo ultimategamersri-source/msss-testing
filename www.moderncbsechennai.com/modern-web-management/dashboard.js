@@ -2,10 +2,12 @@ const API_BASE = "https://msss-backend-961983851669.asia-south1.run.app";
 
 // === State ===
 let filesData = [];
+let fileTree = {}; // Store hierarchical structure
 let currentFiles = {}; // Track open files
 let isAuthenticated = false;
 let longPressTimer = null;
 let renameTarget = null;
+let expandedFolders = new Set(); // Track expanded folders
 
 // === Password Protection ===
 async function checkPassword() {
@@ -72,9 +74,19 @@ async function loadFiles() {
     const data = await res.json();
     console.log('Files loaded:', data);
     
-    filesData = Array.isArray(data) ? data : (data.files || []);
+    // Handle both old flat format and new hierarchical format
+    if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && 'type' in data[0]) {
+      // New hierarchical format
+      fileTree = data;
+      filesData = flattenFileTree(data); // Keep flat list for backward compatibility
+    } else {
+      // Old flat format (backward compatibility)
+      filesData = Array.isArray(data) ? data : (data.files || []);
+      // Convert flat list to tree structure
+      fileTree = buildTreeFromFlatList(filesData);
+    }
     
-    if (filesData.length === 0) {
+    if (filesData.length === 0 && (!fileTree || fileTree.length === 0)) {
       listEl.innerHTML = '<div class="empty-state">No files found. Click "Add File" to create one.</div>';
     } else {
       renderFileList();
@@ -86,66 +98,193 @@ async function loadFiles() {
   }
 }
 
+function flattenFileTree(tree) {
+  const result = [];
+  for (const item of tree) {
+    if (item.type === 'file') {
+      result.push(item.path);
+    } else if (item.type === 'folder' && item.children) {
+      result.push(...flattenFileTree(item.children));
+    }
+  }
+  return result;
+}
+
+function buildTreeFromFlatList(flatList) {
+  const tree = {};
+  for (const filepath of flatList) {
+    const parts = filepath.split('/');
+    let current = tree;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (!current[part]) {
+        current[part] = { type: 'folder', children: {} };
+      }
+      current = current[part].children;
+    }
+    const filename = parts[parts.length - 1];
+    current[filename] = { type: 'file', path: filepath };
+  }
+  
+  // Convert to list format
+  function convertToList(obj, prefix = '') {
+    const result = [];
+    for (const [name, item] of Object.entries(obj).sort()) {
+      if (item.type === 'folder') {
+        result.push({
+          name,
+          type: 'folder',
+          path: prefix + name + '/',
+          children: convertToList(item.children, prefix + name + '/')
+        });
+      } else {
+        result.push({
+          name,
+          type: 'file',
+          path: item.path
+        });
+      }
+    }
+    return result;
+  }
+  
+  return convertToList(tree);
+}
+
+let fileItemIndex = 0;
+
 function renderFileList() {
   const list = document.getElementById('fileList');
   list.innerHTML = '';
+  fileItemIndex = 0; // Reset index for color rotation
   
-  filesData.forEach((filename, index) => {
-    const item = document.createElement('div');
-    item.className = 'file-item';
-    item.dataset.filename = filename;
-    
-    // Color rotation for beautiful file items
-    const colorClass = `color-${index % 8}`;
-    item.classList.add(colorClass);
-    
-    // Check if file is currently open
-    if (currentFiles[filename]) {
-      item.classList.add('active');
+  if (fileTree && fileTree.length > 0) {
+    renderTreeItems(fileTree, list, 0);
+  } else {
+    // Fallback to flat list if tree is empty
+    filesData.forEach((filename) => {
+      createFileItem(filename, list);
+    });
+  }
+}
+
+function renderTreeItems(items, container, depth = 0) {
+  items.forEach((item) => {
+    if (item.type === 'folder') {
+      createFolderItem(item, container, depth);
+    } else {
+      createFileItem(item.path, container, depth);
     }
-    
-    const title = document.createElement('div');
-    title.className = 'file-title';
-    title.textContent = prettifyFileName(filename);
-    
-    item.appendChild(title);
-    
-    // Click to open file
-    item.addEventListener('click', (e) => {
-      if (!e.target.closest('.file-item-actions')) {
-        openFile(filename);
-      }
-    });
-    
-    // Long press to rename
-    let pressTimer = null;
-    item.addEventListener('mousedown', (e) => {
-      pressTimer = setTimeout(() => {
-        startRename(filename, item);
-      }, 800);
-    });
-    
-    item.addEventListener('mouseup', () => {
-      clearTimeout(pressTimer);
-    });
-    
-    item.addEventListener('mouseleave', () => {
-      clearTimeout(pressTimer);
-    });
-    
-    // Hover effect
-    item.addEventListener('mouseenter', () => {
-      item.style.transform = 'translateX(8px) scale(1.02)';
-    });
-    
-    item.addEventListener('mouseleave', () => {
-      if (!currentFiles[filename]) {
-        item.style.transform = 'translateX(0) scale(1)';
-      }
-    });
-    
-    list.appendChild(item);
   });
+}
+
+function createFolderItem(folder, container, depth) {
+  const folderItem = document.createElement('div');
+  folderItem.className = 'folder-item';
+  folderItem.style.paddingLeft = `${depth * 20 + 12}px`;
+  folderItem.dataset.folderPath = folder.path;
+  
+  const isExpanded = expandedFolders.has(folder.path);
+  
+  const folderHeader = document.createElement('div');
+  folderHeader.className = 'folder-header';
+  
+  const toggleIcon = document.createElement('span');
+  toggleIcon.className = 'folder-toggle';
+  toggleIcon.textContent = isExpanded ? '📂' : '📁';
+  toggleIcon.style.marginRight = '8px';
+  toggleIcon.style.cursor = 'pointer';
+  
+  const folderName = document.createElement('span');
+  folderName.className = 'folder-name';
+  folderName.textContent = folder.name;
+  
+  folderHeader.appendChild(toggleIcon);
+  folderHeader.appendChild(folderName);
+  folderItem.appendChild(folderHeader);
+  
+  // Toggle expand/collapse
+  folderHeader.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isExpanded) {
+      expandedFolders.delete(folder.path);
+    } else {
+      expandedFolders.add(folder.path);
+    }
+    renderFileList(); // Re-render to update
+  });
+  
+  // Create children container
+  const childrenContainer = document.createElement('div');
+  childrenContainer.className = 'folder-children';
+  childrenContainer.style.display = isExpanded ? 'block' : 'none';
+  
+  if (folder.children && folder.children.length > 0) {
+    renderTreeItems(folder.children, childrenContainer, depth + 1);
+  }
+  
+  folderItem.appendChild(childrenContainer);
+  container.appendChild(folderItem);
+}
+
+function createFileItem(filepath, container, depth = 0) {
+  const item = document.createElement('div');
+  item.className = 'file-item';
+  item.dataset.filename = filepath;
+  item.style.paddingLeft = `${depth * 20 + 12}px`;
+  
+  // Color rotation for beautiful file items
+  const colorClass = `color-${fileItemIndex % 8}`;
+  item.classList.add(colorClass);
+  fileItemIndex++;
+  
+  // Check if file is currently open
+  if (currentFiles[filepath]) {
+    item.classList.add('active');
+  }
+  
+  const title = document.createElement('div');
+  title.className = 'file-title';
+  const filename = filepath.split('/').pop();
+  title.textContent = prettifyFileName(filename);
+  
+  item.appendChild(title);
+  
+  // Click to open file
+  item.addEventListener('click', (e) => {
+    if (!e.target.closest('.file-item-actions')) {
+      openFile(filepath);
+    }
+  });
+  
+  // Long press to rename
+  let pressTimer = null;
+  item.addEventListener('mousedown', (e) => {
+    pressTimer = setTimeout(() => {
+      startRename(filepath, item);
+    }, 800);
+  });
+  
+  item.addEventListener('mouseup', () => {
+    clearTimeout(pressTimer);
+  });
+  
+  item.addEventListener('mouseleave', () => {
+    clearTimeout(pressTimer);
+  });
+  
+  // Hover effect
+  item.addEventListener('mouseenter', () => {
+    item.style.transform = 'translateX(8px) scale(1.02)';
+  });
+  
+  item.addEventListener('mouseleave', () => {
+    if (!currentFiles[filepath]) {
+      item.style.transform = 'translateX(0) scale(1)';
+    }
+  });
+  
+  container.appendChild(item);
 }
 
 function prettifyFileName(filename) {
@@ -157,16 +296,60 @@ function prettifyFileName(filename) {
 
 function filterFiles() {
   const query = document.getElementById('searchFiles').value.toLowerCase();
-  const items = document.querySelectorAll('.file-item');
+  
+  if (!query) {
+    // If no query, show all items
+    const items = document.querySelectorAll('.file-item, .folder-item, .folder-children');
+    items.forEach((item) => {
+      item.style.display = '';
+    });
+    return;
+  }
+  
+  const items = document.querySelectorAll('.file-item, .folder-item');
+  const foldersToExpand = new Set();
   
   items.forEach((item) => {
-    const filename = item.dataset.filename.toLowerCase();
-    if (filename.includes(query)) {
-      item.style.display = 'flex';
+    const filename = item.dataset.filename || item.dataset.folderPath || '';
+    const displayName = item.querySelector('.file-title')?.textContent || 
+                        item.querySelector('.folder-name')?.textContent || '';
+    
+    if (filename.toLowerCase().includes(query) || displayName.toLowerCase().includes(query)) {
+      item.style.display = '';
+      // If it's a folder and matches, mark it for expansion
+      if (item.classList.contains('folder-item')) {
+        const folderPath = item.dataset.folderPath;
+        if (folderPath) {
+          foldersToExpand.add(folderPath);
+        }
+      }
+      // Show parent folders
+      let parent = item.parentElement;
+      while (parent && parent.classList.contains('folder-children')) {
+        parent.style.display = '';
+        parent = parent.parentElement;
+        if (parent && parent.classList.contains('folder-item')) {
+          const folderPath = parent.dataset.folderPath;
+          if (folderPath) {
+            foldersToExpand.add(folderPath);
+          }
+          parent.style.display = '';
+        }
+      }
     } else {
       item.style.display = 'none';
     }
   });
+  
+  // Expand matching folders
+  foldersToExpand.forEach(path => expandedFolders.add(path));
+  
+  // Re-render to apply expansions
+  if (foldersToExpand.size > 0) {
+    renderFileList();
+    // Re-apply filter after render
+    setTimeout(() => filterFiles(), 10);
+  }
 }
 
 // === Open File ===
