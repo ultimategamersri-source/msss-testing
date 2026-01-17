@@ -1,129 +1,193 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ABC School Dashboard - File Manager</title>
-  <link rel="stylesheet" href="dashboard.css">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MSSS</title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="dist/css/bootstrap-theme.min.css">
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- ✅ Load API config first -->
+  <script type="module" src="js/config.js"></script>
+  <script type="module" src="js/main.js"></script>
+
+
+  <!-- ✅ Load jQuery before Bootstrap -->
+  <script src="js/jquery.js" type="text/javascript"></script>
+  <script src="dist/js/bootstrap.min.js"></script>
+
+  <!-- ✅ Load your chatbot script last (it waits for DOMContentLoaded) -->
+  <script type="module" src="js/chat.js"></script>
+
+  <!-- Chat UI styles -->
+  <style>
+    /* === Floating Chat Button === */
+    #chat-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: linear-gradient(270deg, #ff6ec4, #7873f5, #42e695, #ffe140, #ff6ec4);
+      background-size: 1000% 1000%;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 65px;
+      height: 65px;
+      font-size: 30px;
+      cursor: pointer;
+      animation: moveGradient 8s linear infinite;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+      z-index: 9999;
+    }
+
+    /* === Chat Window === */
+    #chat-window {
+      display: none;
+      position: fixed;
+      bottom: 100px;
+      right: 20px;
+      width: 350px;
+      min-height: 200px;
+      max-height: 600px;
+      background-color: #fdfdfd;
+      border-radius: 30px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.25);
+      flex-direction: column;
+      border: 3px solid transparent;
+      animation: moveGradient 15s linear infinite;
+      z-index: 9999;
+      display: flex;
+    }
+
+    /* === Chat Header === */
+    #chat-header {
+      background: linear-gradient(270deg, #ff6ec4, #7873f5, #42e695, #ffe140, #ff6ec4);
+      background-size: 1000% 1000%;
+      animation: moveGradient 10s linear infinite;
+      color: #fff;
+      padding: 14px;
+      text-align: center;
+      font-family: "Comic Sans MS", sans-serif;
+      border-top-left-radius: 30px;
+      border-top-right-radius: 30px;
+      font-size: large;
+      cursor: grab;
+    }
+
+    @keyframes moveGradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* === Chat Body === */
+    #chat-body {
+      flex: 1;
+      padding: 12px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: #fff;
+    }
+
+    /* === Message Bubbles === */
+    .message {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 25px;
+      word-wrap: break-word;
+      font-family: "Comic Sans MS", sans-serif;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, #42e695, #3bb2b8);
+      color: #fff;
+      border-bottom-right-radius: 5px;
+    }
+
+    .bot {
+      align-self: flex-start;
+      background: linear-gradient(135deg, #7873f5, #a98df5);
+      color: white;
+      border-bottom-left-radius: 5px;
+      position: relative;
+      padding-left: 28px;
+    }
+
+    .bot .icon {
+      position: absolute;
+      top: 6px;
+      left: 8px;
+    }
+
+    /* === Input Area === */
+    #chat-input {
+      display: flex;
+      padding: 8px;
+      border-top: 1px solid #ccc;
+      background: #f7f7f7;
+      border-bottom-left-radius: 30px;
+      border-bottom-right-radius: 30px;
+    }
+
+    #user-input {
+      flex: 1;
+      min-height: 40px;
+      max-height: 120px;
+      resize: none;
+      border-radius: 20px;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      font-size: 0.95em;
+      font-family: "Comic Sans MS", sans-serif;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    #user-input:focus { border-color: #7873f5; }
+
+    #send-btn {
+      margin-left: 8px;
+      padding: 10px 14px;
+      background: linear-gradient(135deg, #ff6ec4, #7873f5);
+      color: white;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.2s;
+    }
+
+    #send-btn:hover { transform: scale(1.1); }
+  </style>
 </head>
+
 <body>
+  <button id="chat-btn">💬</button>
 
-<div class="dashboard">
-  <div class="sidebar">
-    <ul id="fileTree"></ul>
-  </div>
-
-  <div class="viewer">
-    <pre id="fileContent">Select a file</pre>
-  </div>
-</div>
-
-<!-- ===== PASSWORD OVERLAY ===== -->
-<div id="passwordOverlay" class="password-overlay">
-  <div class="password-backdrop"></div>
-  <div class="password-container">
-    <div class="password-box">
-      <div class="password-icon">🔒</div>
-      <h2>Dashboard Access</h2>
-      <p class="password-subtitle">Enter your password to continue</p>
-      <input type="password" id="dashboardPassword" placeholder="Enter Password" autocomplete="off">
-      <div class="password-actions">
-        <button id="enterBtn" class="btn-primary">Enter</button>
-        <button id="demoBtn" class="btn-secondary">🔑 Change Password</button> 
-        # 👁️👁️‍🗨️ 
-      </div>
-      <p id="passwordError" class="error-message"></p>
+  <div id="chat-window">
+    <div id="chat-header" style="color:#ffed4f; font-weight:bold;">Brightly (School Assistant)</div>
+    <div id="chat-body"></div>
+    <div id="chat-input">
+      <textarea id="user-input" placeholder="Ask something..."></textarea>
+      <button id="send-btn">Send</button>
     </div>
   </div>
-</div>
 
-<!-- ===== DASHBOARD CONTAINER ===== -->
-<div id="dashboardContainer" class="dashboard-container blurred">
-  
-  <!-- ===== LEFT SIDEBAR - FILE TITLES VIEWER ===== -->
-  <aside id="titlesViewer" class="sidebar">
-    <div class="sidebar-header">
-      <div class="header-top">
-        <h1 class="project-title">📁 Files</h1>
-        <button id="searchToggleBtn" class="search-toggle-btn" title="Search files">🔍</button>
-      </div>
-      <div id="searchContainer" class="search-container hidden">
-        <input type="text" id="searchFiles" placeholder="Search files..." class="search-input">
-      </div>
-    </div>
-
-    <div id="fileList" class="file-list">
-      <!-- File items will be dynamically added here -->
-    </div>
-
-    <div class="add-file-section">
-      <button id="addFileBtn" class="add-file-btn" title="Add new file">
-        <span class="plus-icon">+</span>
-        <span class="add-text">Add File</span>
-      </button>
-    </div>
-  </aside>
-
-  <!-- ===== RIGHT MAIN CONTENT VIEW ===== -->
-  <main id="mainContent" class="main-content">
-    <div class="top-banner">
-      <h1 class="ai-assistant-title">✨ ABC AI Assistant Manager ✨</h1>
-    </div>
-    <div class="main-header">
-      <h2>File Manager</h2>
-      <button id="changePasswordBtn" class="change-password-btn" title="Change Password">🔑 Change Password</button>
-    </div>
-    <div id="contentArea" class="content-area">
-      <!-- File content blocks will be dynamically added here -->
-      <div class="welcome-message" id="welcomeMessage">
-        <div class="welcome-icon">📄</div>
-        <h2>Welcome to File Manager</h2>
-        <p>Select a file from the sidebar to view or edit its contents</p>
-      </div>
-    </div>
-  </main>
-
-</div>
-
-<!-- ===== RENAME MODAL ===== -->
-<div id="renameModal" class="modal hidden">
-  <div class="modal-content">
-    <h3>Rename File</h3>
-    <input type="text" id="renameInput" placeholder="Enter new file name">
-    <div class="modal-actions">
-      <button id="renameConfirmBtn" class="btn-primary">Rename</button>
-      <button id="renameCancelBtn" class="btn-secondary">Cancel</button>
+  <div class="container-fluid">
+    <div class="jumbotron">
+      <h2 align="center">ABC Senior Secondary School</h2>
     </div>
   </div>
-</div>
-
-<!-- ===== CREATE FILE MODAL ===== -->
-<div id="createFileModal" class="modal hidden">
-  <div class="modal-content">
-    <h3>Create New File</h3>
-    <input type="text" id="createFileNameInput" placeholder="Enter file name (without .txt)">
-    <div class="modal-actions">
-      <button id="createFileConfirmBtn" class="btn-primary">Create</button>
-      <button id="createFileCancelBtn" class="btn-secondary">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== CHANGE PASSWORD MODAL ===== -->
-<div id="changePasswordModal" class="modal hidden">
-  <div class="modal-content">
-    <h3>Change Password</h3>
-    <input type="password" id="oldPasswordInput" placeholder="Current Password" autocomplete="off">
-    <input type="password" id="newPasswordInput" placeholder="New Password" autocomplete="off">
-    <input type="password" id="confirmPasswordInput" placeholder="Confirm New Password" autocomplete="off">
-    <div class="modal-actions">
-      <button id="changePasswordConfirmBtn" class="btn-primary">Change Password</button>
-      <button id="changePasswordCancelBtn" class="btn-secondary">Cancel</button>
-    </div>
-    <p id="changePasswordError" class="error-message"></p>
-  </div>
-</div>
-
-<script src="dashboard.js"></script>
 </body>
 </html>
