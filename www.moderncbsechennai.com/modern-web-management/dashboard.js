@@ -451,10 +451,14 @@ function filterFiles() {
 
 // === Open File ===
 async function openFile(filename) {
+  // 🔧 FIX: Build full path for files inside folders
+  const fullPath = filename;
+
   // Check if already open
-  if (currentFiles[filename]) {
-    // Scroll to existing block
-    const block = document.querySelector(`[data-file-block="${filename}"]`);
+  if (currentFiles[fullPath]) {
+    const block = document.querySelector(
+      `[data-file-block="${fullPath.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&')}"]`
+    );
     if (block) {
       block.scrollIntoView({ behavior: 'smooth', block: 'start' });
       block.classList.add('highlight');
@@ -462,52 +466,34 @@ async function openFile(filename) {
     }
     return;
   }
-  
+
   try {
-    // FastAPI automatically decodes URL-encoded path parameters
-    // We need to encode slashes as %2F so FastAPI can decode them back to /
-    // Encode each path segment separately, then join with %2F
-    const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('%2F');
-    
-    console.log(`Attempting to open file: ${filename}`);
-    console.log(`Encoded for URL: ${encodedFilename}`);
-    
-    const res = await fetch(`${API_BASE}/file/${encodedFilename}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      mode: 'cors'
-    });
-    
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error(`File open failed: ${res.status}`, errorText);
-      let errorData;
-      try {
-        errorData = JSON.parse(errorText);
-      } catch {
-        errorData = { error: 'File not found' };
-      }
-      throw new Error(errorData.error || `File not found (${res.status})`);
-    }
-    
+    const encodedFilename = fullPath
+      .split('/')
+      .map(part => encodeURIComponent(part))
+      .join('%2F');
+
+    const res = await fetch(`${API_BASE}/file/${encodedFilename}`);
+
+    if (!res.ok) throw new Error('File not found');
+
     const data = await res.json();
-    console.log(`✅ File opened successfully: ${filename}`);
-    console.log(`Content length: ${(data.content || '').length} characters`);
-    addFileBlock(filename, data.content || '');
-    
-    // Mark as open in sidebar
-    const escapedFilename = filename.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&');
+
+    addFileBlock(fullPath, data.content || '');
+    currentFiles[fullPath] = true;
+
+    const escapedFilename = fullPath.replace(
+      /[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g,
+      '\\$&'
+    );
     const item = document.querySelector(`[data-filename="${escapedFilename}"]`);
-    if (item) {
-      item.classList.add('active');
-    }
+    if (item) item.classList.add('active');
+
   } catch (err) {
-    console.error('Open file error:', err);
     showNotification(`Failed to open file: ${err.message}`, 'error');
   }
 }
+
 
 // === Create File Block ===
 function addFileBlock(filename, content) {
@@ -644,7 +630,7 @@ async function saveFile(filename, content) {
     const res = await fetch(`${API_BASE}/file/update`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ filename, content })
+      body: JSON.stringify({ title: filename, content })
     });
     
     if (!res.ok) {
@@ -664,38 +650,44 @@ async function saveFile(filename, content) {
 
 // === Delete File ===
 async function deleteFile(filename) {
+  // 🔧 FIX: Build full path for files inside folders
+  const fullPath = filename;
+
   try {
-    // Encode slashes as %2F for FastAPI path parameter
-    const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('%2F');
+    const encodedFilename = fullPath
+      .split('/')
+      .map(part => encodeURIComponent(part))
+      .join('%2F');
+
     const res = await fetch(`${API_BASE}/file/${encodedFilename}`, {
       method: 'DELETE'
     });
-    
+
     if (!res.ok) {
       throw new Error('Delete failed');
     }
-    
+
     // Remove from local state
-    filesData = filesData.filter(f => f !== filename);
-    delete currentFiles[filename];
-    
+    filesData = filesData.filter(f => f !== fullPath);
+    delete currentFiles[fullPath];
+
     // Update sidebar
-    // Escape special characters for querySelector
-    const escapedFilename = filename.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&');
+    const escapedFilename = fullPath.replace(
+      /[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g,
+      '\\$&'
+    );
     const item = document.querySelector(`[data-filename="${escapedFilename}"]`);
-    if (item) {
-      item.classList.remove('active');
-    }
-    
-    // Reload files to update tree structure
+    if (item) item.classList.remove('active');
+
     await loadFiles();
-    showNotification(`File "${filename}" deleted successfully!`, 'success');
+    showNotification(`File "${fullPath}" deleted successfully!`, 'success');
   } catch (err) {
     console.error('Delete error:', err);
     showNotification(`Failed to delete file: ${err.message}`, 'error');
     throw err;
   }
 }
+
 
 // === Delete Folder ===
 async function deleteFolder(folderPath) {
@@ -882,7 +874,7 @@ async function confirmRename() {
     const createRes = await fetch(`${API_BASE}/file/create`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ title: newName, content })
+      body: JSON.stringify({ title: newFilename, content })
     });
     
     if (!createRes.ok) {
@@ -986,7 +978,7 @@ async function confirmCreateFile() {
     const res = await fetch(`${API_BASE}/file/create`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ title: fileName, content: '' })
+      body: JSON.stringify({ title: filename, content: '' })
     });
     
     if (!res.ok) {
@@ -1039,8 +1031,6 @@ async function showViewPasswordModal() {
     // Try to get the actual password from the API
     // Since we can't directly get it, we'll show the default
     // The actual password is stored in environment variable DASHBOARD_PASSWORD
-    // Default is "modernSchool2025" if not set
-    passwordDisplay.value = 'modernSchool2025';
     
     // Note: The actual password is stored server-side in environment variable
     // This shows the default password. If it was changed, user needs to check server config.
