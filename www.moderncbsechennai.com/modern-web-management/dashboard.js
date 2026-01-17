@@ -448,7 +448,7 @@ function filterFiles() {
 // === Open File ===
 async function openFile(filename) {
   // Build full path relative to bucket, no leading slash
-  const fullPath = currentPath ? `${currentPath}/${filename}` : filename;
+  const fullPath = filename;
 
   if (currentFiles[fullPath]) {
     const block = document.querySelector(`[data-file-block="${fullPath}"]`);
