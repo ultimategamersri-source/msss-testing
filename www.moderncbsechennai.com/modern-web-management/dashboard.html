@@ -19,8 +19,7 @@
       <input type="password" id="dashboardPassword" placeholder="Enter Password" autocomplete="off">
       <div class="password-actions">
         <button id="enterBtn" class="btn-primary">Enter</button>
-        <button id="demoBtn" class="btn-secondary">🔑 Change Password</button> 
-        # 👁️👁️‍🗨️ 
+        <button id="demoBtn" class="btn-secondary">🔑 Change Password</button>
       </div>
       <p id="passwordError" class="error-message"></p>
     </div>
@@ -61,7 +60,7 @@
     </div>
     <div class="main-header">
       <h2>File Manager</h2>
-      <button id="changePasswordBtn" class="change-password-btn" title="Change Password">🔑 Change Password</button>
+      <button id="viewPasswordBtn" class="change-password-btn" title="View Password">👁️ View Password</button>
     </div>
     <div id="contentArea" class="content-area">
       <!-- File content blocks will be dynamically added here -->
@@ -97,6 +96,25 @@
       <button id="createFileConfirmBtn" class="btn-primary">Create</button>
       <button id="createFileCancelBtn" class="btn-secondary">Cancel</button>
     </div>
+  </div>
+</div>
+
+<!-- ===== VIEW PASSWORD MODAL ===== -->
+<div id="viewPasswordModal" class="modal hidden">
+  <div class="modal-content">
+    <h3>View Password</h3>
+    <div style="margin-bottom: 20px;">
+      <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Current Dashboard Password:</label>
+      <div style="position: relative;">
+        <input type="password" id="passwordDisplay" readonly style="width: 100%; padding: 14px 50px 14px 18px; border-radius: 12px; border: 2px solid #e0e0e0; font-size: 16px; font-family: monospace; background: #f8f9fa;">
+        <button id="togglePasswordVisibility" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 20px; padding: 5px;">👁️</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button id="viewPasswordCloseBtn" class="btn-primary">Close</button>
+      <button id="viewPasswordChangeBtn" class="btn-secondary">Change Password</button>
+    </div>
+    <p id="viewPasswordError" class="error-message"></p>
   </div>
 </div>
 
