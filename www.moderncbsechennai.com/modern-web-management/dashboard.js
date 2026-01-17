@@ -235,6 +235,55 @@ function createFolderItem(folder, container, depth) {
     clearTimeout(pressTimer);
   });
   
+  // Right click or long press for delete folder option
+  const folderActions = document.createElement('div');
+  folderActions.className = 'folder-actions';
+  folderActions.style.display = 'none';
+  folderActions.style.position = 'absolute';
+  folderActions.style.right = '10px';
+  folderActions.style.top = '50%';
+  folderActions.style.transform = 'translateY(-50%)';
+  
+  const deleteFolderBtn = document.createElement('button');
+  deleteFolderBtn.className = 'folder-delete-btn';
+  deleteFolderBtn.innerHTML = '🗑️';
+  deleteFolderBtn.title = 'Delete folder';
+  deleteFolderBtn.style.background = 'rgba(255, 0, 0, 0.2)';
+  deleteFolderBtn.style.border = 'none';
+  deleteFolderBtn.style.borderRadius = '6px';
+  deleteFolderBtn.style.padding = '6px 10px';
+  deleteFolderBtn.style.cursor = 'pointer';
+  deleteFolderBtn.style.color = 'white';
+  deleteFolderBtn.style.fontSize = '14px';
+  
+  deleteFolderBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const folderPath = folder.path.endsWith('/') ? folder.path.slice(0, -1) : folder.path;
+    const filesInFolder = filesData.filter(f => f.startsWith(folderPath + '/'));
+    
+    if (filesInFolder.length === 0) {
+      if (confirm(`Are you sure you want to delete the empty folder "${folder.name}"?`)) {
+        await deleteFolder(folderPath);
+      }
+    } else {
+      if (confirm(`Are you sure you want to delete folder "${folder.name}" and all ${filesInFolder.length} file(s) inside it?`)) {
+        await deleteFolder(folderPath);
+      }
+    }
+  });
+  
+  folderActions.appendChild(deleteFolderBtn);
+  folderHeader.appendChild(folderActions);
+  
+  // Show delete button on hover
+  folderHeader.addEventListener('mouseenter', () => {
+    folderActions.style.display = 'block';
+  });
+  
+  folderHeader.addEventListener('mouseleave', () => {
+    folderActions.style.display = 'none';
+  });
+  
   // Create children container
   const childrenContainer = document.createElement('div');
   childrenContainer.className = 'folder-children';
@@ -415,8 +464,13 @@ async function openFile(filename) {
   }
   
   try {
-    // Properly encode the filename, handling slashes
-    const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('/');
+    // Properly encode the filename, handling slashes - encode each segment separately
+    const pathParts = filename.split('/');
+    const encodedParts = pathParts.map(part => encodeURIComponent(part));
+    const encodedFilename = encodedParts.join('/');
+    
+    console.log(`Attempting to open file: ${filename} (encoded: ${encodedFilename})`);
+    
     const res = await fetch(`${API_BASE}/file/${encodedFilename}`, {
       method: 'GET',
       headers: {
@@ -427,11 +481,12 @@ async function openFile(filename) {
     
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({ error: 'File not found' }));
-      throw new Error(errorData.error || 'File not found');
+      console.error(`File open failed: ${res.status}`, errorData);
+      throw new Error(errorData.error || `File not found (${res.status})`);
     }
     
     const data = await res.json();
-    console.log(`✅ File opened: ${filename}`);
+    console.log(`✅ File opened: ${filename}`, data);
     addFileBlock(filename, data.content || '');
     
     // Mark as open in sidebar
@@ -635,6 +690,40 @@ async function deleteFile(filename) {
   }
 }
 
+// === Delete Folder ===
+async function deleteFolder(folderPath) {
+  try {
+    // Get all files in the folder
+    const filesInFolder = filesData.filter(f => f.startsWith(folderPath + '/'));
+    
+    // Delete all files in the folder
+    let deletedCount = 0;
+    for (const filePath of filesInFolder) {
+      try {
+        const encodedPath = filePath.split('/').map(part => encodeURIComponent(part)).join('/');
+        const res = await fetch(`${API_BASE}/file/${encodedPath}`, {
+          method: 'DELETE'
+        });
+        if (res.ok) {
+          deletedCount++;
+          // Remove from local state
+          filesData = filesData.filter(f => f !== filePath);
+          delete currentFiles[filePath];
+        }
+      } catch (err) {
+        console.error(`Failed to delete file ${filePath}:`, err);
+      }
+    }
+    
+    // Reload files to update tree structure
+    await loadFiles();
+    showNotification(`Folder deleted successfully! ${deletedCount} file(s) removed.`, 'success');
+  } catch (err) {
+    console.error('Delete folder error:', err);
+    showNotification(`Failed to delete folder: ${err.message}`, 'error');
+  }
+}
+
 // === Rename File ===
 function startRename(filename, sidebarItem, titleElement, isFolder = false) {
   renameTarget = { filename, sidebarItem, titleElement, isFolder };
@@ -669,12 +758,72 @@ async function confirmRename() {
   
   const { filename, sidebarItem, titleElement, isFolder } = renameTarget;
   
-  // Handle folder renaming - show message that it's not supported yet
+  // Handle folder renaming
   if (isFolder) {
-    showNotification('Folder renaming is not yet supported. Please rename files individually.', 'info');
-    document.getElementById('renameModal').classList.add('hidden');
-    renameTarget = null;
-    return;
+    try {
+      // For folders, we need to rename all files inside the folder
+      const oldFolderPath = filename.endsWith('/') ? filename.slice(0, -1) : filename;
+      const newFolderName = newName.replace(/\s+/g, '_').toLowerCase();
+      const pathParts = oldFolderPath.split('/');
+      pathParts.pop(); // Remove old folder name
+      const parentPath = pathParts.length > 0 ? pathParts.join('/') + '/' : '';
+      const newFolderPath = parentPath + newFolderName + '/';
+      
+      // Get all files in the folder
+      const filesInFolder = filesData.filter(f => f.startsWith(oldFolderPath + '/'));
+      
+      if (filesInFolder.length === 0) {
+        showNotification('Folder is empty. Cannot rename empty folder.', 'info');
+        document.getElementById('renameModal').classList.add('hidden');
+        renameTarget = null;
+        return;
+      }
+      
+      // Rename all files in the folder
+      let renamedCount = 0;
+      for (const oldFilePath of filesInFolder) {
+        const relativePath = oldFilePath.replace(oldFolderPath + '/', '');
+        const newFilePath = newFolderPath + relativePath;
+        
+        // Fetch old file content
+        const encodedOldPath = oldFilePath.split('/').map(part => encodeURIComponent(part)).join('/');
+        const res = await fetch(`${API_BASE}/file/${encodedOldPath}`);
+        if (!res.ok) continue;
+        
+        const data = await res.json();
+        const content = data.content || '';
+        
+        // Create new file
+        const createRes = await fetch(`${API_BASE}/file/create`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ title: newFilePath, content })
+        });
+        
+        if (createRes.ok) {
+          // Delete old file
+          await fetch(`${API_BASE}/file/${encodedOldPath}`, { method: 'DELETE' });
+          renamedCount++;
+        }
+      }
+      
+      if (renamedCount > 0) {
+        await loadFiles(); // Reload to update tree
+        showNotification(`Folder renamed successfully! ${renamedCount} file(s) moved.`, 'success');
+      } else {
+        showNotification('Failed to rename folder. No files were moved.', 'error');
+      }
+      
+      document.getElementById('renameModal').classList.add('hidden');
+      renameTarget = null;
+      return;
+    } catch (err) {
+      console.error('Folder rename error:', err);
+      showNotification(`Failed to rename folder: ${err.message}`, 'error');
+      document.getElementById('renameModal').classList.add('hidden');
+      renameTarget = null;
+      return;
+    }
   }
   
   try {
@@ -903,6 +1052,22 @@ function showChangePasswordModal() {
   errorEl.style.display = 'none';
   modal.classList.remove('hidden');
   document.getElementById('oldPasswordInput').focus();
+  
+  // Add a "View Password" button option in the modal
+  const modalContent = modal.querySelector('.modal-content');
+  let viewPasswordBtn = document.getElementById('viewPasswordFromChangeBtn');
+  if (!viewPasswordBtn) {
+    viewPasswordBtn = document.createElement('button');
+    viewPasswordBtn.id = 'viewPasswordFromChangeBtn';
+    viewPasswordBtn.className = 'btn-secondary';
+    viewPasswordBtn.textContent = '👁️ View Password';
+    viewPasswordBtn.style.marginTop = '10px';
+    viewPasswordBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+      showViewPasswordModal();
+    });
+    modalContent.appendChild(viewPasswordBtn);
+  }
 }
 
 async function confirmChangePassword() {
@@ -1002,18 +1167,18 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('searchToggleBtn').addEventListener('click', toggleSearch);
   document.getElementById('searchFiles').addEventListener('input', filterFiles);
   
-  // View password
-  document.getElementById('viewPasswordBtn').addEventListener('click', showViewPasswordModal);
+  // Change password button (actually opens change password modal)
+  document.getElementById('viewPasswordBtn').addEventListener('click', showChangePasswordModal);
+  document.getElementById('changePasswordConfirmBtn').addEventListener('click', confirmChangePassword);
+  document.getElementById('changePasswordCancelBtn').addEventListener('click', cancelChangePassword);
+  
+  // View password (accessible from change password modal)
   document.getElementById('viewPasswordCloseBtn').addEventListener('click', closeViewPasswordModal);
   document.getElementById('viewPasswordChangeBtn').addEventListener('click', () => {
     closeViewPasswordModal();
     showChangePasswordModal();
   });
   document.getElementById('togglePasswordVisibility').addEventListener('click', togglePasswordVisibility);
-  
-  // Change password
-  document.getElementById('changePasswordConfirmBtn').addEventListener('click', confirmChangePassword);
-  document.getElementById('changePasswordCancelBtn').addEventListener('click', cancelChangePassword);
   
   // Modal handlers
   document.getElementById('renameConfirmBtn').addEventListener('click', confirmRename);
