@@ -1,977 +1,1080 @@
-# api.py
-import os
-import json
-import math
-import re
-import random
-import logging
-import hashlib
-from datetime import datetime
+const API_BASE = "https://msss-backend-961983851669.asia-south1.run.app";
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
-from google.cloud import storage
-from fastapi import HTTPException
+// === State ===
+let filesData = [];
+let fileTree = {}; // Store hierarchical structure
+let currentFiles = {}; // Track open files
+let isAuthenticated = false;
+let longPressTimer = null;
+let renameTarget = null;
+let expandedFolders = new Set(); // Track expanded folders
 
-DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "modernSchool2025")
+// === Password Protection ===
+async function checkPassword() {
+  const pass = document.getElementById('dashboardPassword').value.trim();
+  showPasswordError('');
+  
+  if (!pass) {
+    showPasswordError('Please enter a password');
+    return;
+  }
 
-def check_password(pw: str):
-    if pw != DASHBOARD_PASSWORD:
-        raise HTTPException(status_code=403, detail="Invalid password")
-# ======================
-# Google Cloud Storage
-# ======================
-storage_client = storage.Client()
-BUCKET_NAME = "msss-text-files"
-
-# ----------------------
-# FastAPI app + CORS setup
-# ----------------------
-app = FastAPI(title="MSSS Backend", version="1.0.0")
-allowed_origins = [
-    "https://modernschooltesting.netlify.app",
-    "https://schooltesting3.netlify.app",
-    "https://modern-web-management.netlify.app",
-    "http://localhost:3000",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
-    "http://localhost:5500",
-    "http://127.0.0.1:5500",
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins if not os.getenv("ALLOW_ALL_ORIGINS", "false").lower() == "true" else ["*"],
-    allow_credentials=True if not os.getenv("ALLOW_ALL_ORIGINS", "false").lower() == "true" else False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
-
-# ======================
-# Logging
-# ======================
-DEBUG = os.getenv("DEBUG", "false").lower() == "true"
-logging.basicConfig(
-    level=logging.DEBUG if DEBUG else logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-)
-log = logging.getLogger("msss")
-
-# ======================
-# Project env
-# ======================
-DEFAULT_PROJECT = "modernschoolnanganallurChatbot"
-DEFAULT_LOCATION = "asia-south1"
-
-def env(name: str, default: str | None = None) -> str | None:
-    return os.getenv(name, default)
-
-GOOGLE_CLOUD_PROJECT = env("GOOGLE_CLOUD_PROJECT", DEFAULT_PROJECT)
-GOOGLE_CLOUD_LOCATION = env("GOOGLE_CLOUD_LOCATION", DEFAULT_LOCATION)
-REFRESH_VECTORS_ON_STARTUP = env("REFRESH_VECTORS_ON_STARTUP", "true").lower() == "true"
-
-# ======================
-# OpenAI setup
-# ======================
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None
-
-try:
-    from vector import load_vector_store
-except Exception as e:
-    load_vector_store = None
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if OpenAI is None:
-    log.error("OpenAI python package not available. Install `openai`.")
-    _openai_client = None
-else:
-    try:
-        _openai_client = OpenAI(api_key=OPENAI_API_KEY)
-    except Exception as e:
-        _openai_client = None
-        log.error(f"Failed to initialize OpenAI client: {e}")
-
-# ======================
-# Embeddings / LLMs
-# ======================
-class OpenAIEmbedder:
-    def __init__(self, client: "OpenAI", model: str = "text-embedding-3-small", dim: int = 512):
-        self.client = client
-        self.model = model
-        self.dim = dim
-
-    def embed_query(self, text: str):
-        if not text:
-            return [0.0] * self.dim
-        if self.client is None:
-            h = hashlib.sha256(text.encode("utf-8")).digest()
-            vec = []
-            prev = h
-            while len(vec) < self.dim:
-                prev = hashlib.sha256(prev).digest()
-                vec.extend([b / 255.0 for b in prev])
-            return vec[:self.dim]
-        try:
-            res = self.client.embeddings.create(model=self.model, input=text)
-            return res.data[0].embedding
-        except Exception as e:
-            log.warning(f"Embedding call failed: {e}; using fallback embedder.")
-            h = hashlib.sha256(text.encode("utf-8")).digest()
-            vec = []
-            prev = h
-            while len(vec) < self.dim:
-                prev = hashlib.sha256(prev).digest()
-                vec.extend([b / 255.0 for b in prev])
-            return vec[:self.dim]
-
-class OpenAIChatLLM:
-    def __init__(self, client: "OpenAI", model: str = "gpt-4o-mini", system_prompt: str | None = None):
-        self.client = client
-        self.model = model
-        self.system_prompt = system_prompt or (
-            "You are Brightly, the official AI assistant of ABC Senior Secondary School, Chennai. "
-            "Answer in a concise, helpful, teacher-style manner."
-        )
-
-    def invoke(self, prompt: str, temperature: float = 0.2, max_tokens: int = 1024):
-        if self.client is None:
-            raise RuntimeError("OpenAI client not initialized")
-        try:
-            resp = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "system", "content": self.system_prompt},{"role": "user", "content": prompt}],
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            content = ""
-            if resp and getattr(resp, "choices", None):
-                choice = resp.choices[0]
-                message = getattr(choice, "message", None)
-                if message and getattr(message, "content", None):
-                    content = message.content
-                else:
-                    content = getattr(choice, "text", "") or getattr(resp, "output_text", "") or ""
-            return content.strip()
-        except Exception as e:
-            raise
-
-class OpenAIEmotionLLM:
-    def __init__(self, client: "OpenAI", model: str = "gpt-4o-mini"):
-        self.client = client
-        self.model = model
-
-    def invoke(self, prompt: str):
-        if self.client is None:
-            raise RuntimeError("OpenAI client not initialized")
-        try:
-            resp = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-                max_tokens=32,
-            )
-            content = ""
-            if resp and getattr(resp, "choices", None):
-                choice = resp.choices[0]
-                message = getattr(choice, "message", None)
-                if message and getattr(message, "content", None):
-                    content = message.content
-                else:
-                    content = getattr(choice, "text", "") or getattr(resp, "output_text", "") or ""
-            return content.strip()
-        except Exception as e:
-            raise
-
-_embedding_model = None
-_answer_llm = None
-_emotion_llm = None
-
-def get_embedding_model():
-    global _embedding_model
-    if _embedding_model is None:
-        _embedding_model = OpenAIEmbedder(client=_openai_client, model=os.getenv("OPENAI_EMBEDDING_MODEL","text-embedding-3-small"), dim=512)
-    return _embedding_model
-
-def get_answer_llm():
-    global _answer_llm
-    if _answer_llm is None:
-        _answer_llm = OpenAIChatLLM(client=_openai_client, model=os.getenv("OPENAI_CHAT_MODEL","gpt-4o-mini"))
-    return _answer_llm
-
-def get_emotion_llm():
-    global _emotion_llm
-    if _emotion_llm is None:
-        _emotion_llm = OpenAIEmotionLLM(client=_openai_client, model=os.getenv("OPENAI_CHAT_MODEL","gpt-4o-mini"))
-    return _emotion_llm
-
-# ======================
-# File operations with GCS fallback to local `data/` directory for dev
-# ======================
-def build_file_tree(file_paths):
-    """Build a hierarchical tree structure from flat file paths"""
-    tree = {}
+  try {
+    const res = await fetch(`${API_BASE}/auth-check`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ password: pass })
+    });
     
-    for file_path in file_paths:
-        parts = file_path.split('/')
-        current = tree
-        
-        # Navigate/create the folder structure
-        for i, part in enumerate(parts[:-1]):
-            if part not in current:
-                current[part] = {'type': 'folder', 'children': {}}
-            current = current[part]['children']
-        
-        # Add the file
-        filename = parts[-1]
-        if filename not in current:
-            current[filename] = {'type': 'file', 'path': file_path}
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
     
-    return tree
-
-def tree_to_list(tree, prefix=""):
-    """Convert tree structure to flat list with paths"""
-    result = []
-    for name, item in sorted(tree.items()):
-        if item['type'] == 'folder':
-            result.append({
-                'name': name,
-                'type': 'folder',
-                'path': prefix + name + '/' if prefix else name + '/',
-                'children': tree_to_list(item['children'], prefix + name + '/')
-            })
-        else:
-            result.append({
-                'name': name,
-                'type': 'file',
-                'path': item['path']
-            })
-    return result
-
-@app.get("/files")
-def list_files():
-    # Try GCS first, then fallback to local data/ folder
-    try:
-        bucket = storage_client.bucket(BUCKET_NAME)
-        files = [b.name for b in bucket.list_blobs()]
-    except Exception as e:
-        log.warning(f"⚠️ GCS list failed: {e}; falling back to local data/")
-        files = []
-        data_dir = "data"
-        if os.path.isdir(data_dir):
-            # Recursively get all files
-            for root, dirs, filenames in os.walk(data_dir):
-                for f in filenames:
-                    if f.endswith('.txt'):
-                        rel_path = os.path.relpath(os.path.join(root, f), data_dir)
-                        # Normalize path separators
-                        rel_path = rel_path.replace('\\', '/')
-                        files.append(rel_path)
+    const data = await res.json();
+    console.log('Auth response:', data);
     
-    # Build hierarchical structure
-    tree = build_file_tree(files)
-    file_list = tree_to_list(tree)
-    
-    return JSONResponse(file_list)
-
-
-@app.get("/file/{filename}")
-def read_file(filename: str):
-    # Decode the filename (handles URL encoding)
-    filename = filename.replace('%2F', '/').replace('%5C', '/')
-    
-    # Try GCS blob, fallback to local file
-    try:
-        bucket = storage_client.bucket(BUCKET_NAME)
-        blob = bucket.blob(filename)
-        if blob.exists():
-            return JSONResponse({"filename": filename, "content": blob.download_as_text()})
-    except Exception as e:
-        log.debug(f"ℹ️ GCS read failed for {filename}: {e}")
-
-    # Local fallback - normalize path separators
-    filename_normalized = filename.replace('/', os.sep).replace('\\', os.sep)
-    local_path = os.path.join("data", filename_normalized)
-    
-    # Also try with forward slashes directly (for cross-platform compatibility)
-    if not os.path.exists(local_path):
-        local_path = os.path.join("data", filename.replace('\\', '/'))
-        # Convert to OS-specific path
-        local_path = os.path.normpath(local_path)
-    
-    if os.path.exists(local_path) and os.path.isfile(local_path):
-        try:
-            with open(local_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            return JSONResponse({"filename": filename, "content": content})
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
-
-    return JSONResponse({"error": "File not found"}, status_code=404)
-
-
-@app.post("/file/create")
-async def create_file(request: Request):
-    data = await request.json()
-    title = data.get("title")
-    content = data.get("content", "")
-    if not title:
-        return JSONResponse({"error": "Title required"}, status_code=400)
-    
-    # Handle folder paths in title (e.g., "folder/subfolder/filename" or just "filename")
-    if '/' in title:
-        # User provided folder path
-        filename = title.replace(" ", "_").lower()
-        if not filename.endswith('.txt'):
-            filename += ".txt"
-    else:
-        # Just filename, no folder
-        filename = title.replace(" ", "_").lower() + ".txt"
-    
-    # Try upload to GCS
-    try:
-        bucket = storage_client.bucket(BUCKET_NAME)
-        bucket.blob(filename).upload_from_string(content)
-        return JSONResponse({"status": "created", "file": filename})
-    except Exception as e:
-        log.warning(f"⚠️ GCS create failed for {filename}: {e}; writing locally")
-        os.makedirs("data", exist_ok=True)
-        
-        # Handle nested paths - create directories if needed
-        filename_normalized = filename.replace('/', os.sep).replace('\\', os.sep)
-        local_path = os.path.join("data", filename_normalized)
-        local_dir = os.path.dirname(local_path)
-        if local_dir and local_dir != "data":
-            os.makedirs(local_dir, exist_ok=True)
-        
-        with open(local_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        return JSONResponse({"status": "created-local", "file": filename})
-
-
-@app.post("/file/update")
-async def update_file(request: Request):
-    data = await request.json()
-    filename = data.get("filename")
-    content = data.get("content", "")
-    if not filename:
-        return JSONResponse({"error": "Filename required"}, status_code=400)
-    
-    # Normalize filename path
-    filename = filename.replace('%2F', '/').replace('%5C', '/')
-    
-    try:
-        bucket = storage_client.bucket(BUCKET_NAME)
-        blob = bucket.blob(filename)
-        blob.upload_from_string(content, content_type="text/plain")
-        log.info(f"✅ Successfully updated file in GCS: {filename}")
-        
-        # Refresh vector stores after file update
-        try:
-            refresh_vector_stores()
-            log.info("✅ Vector stores refreshed after file update")
-        except Exception as e:
-            log.warning(f"⚠️ Vector refresh failed: {e}")
-        
-        return JSONResponse({"status": "updated", "file": filename})
-    except Exception as e:
-        log.warning(f"⚠️ GCS update failed for {filename}: {e}; writing locally")
-        os.makedirs("data", exist_ok=True)
-        
-        # Handle nested paths - create directories if needed
-        filename_normalized = filename.replace('/', os.sep).replace('\\', os.sep)
-        local_path = os.path.join("data", filename_normalized)
-        local_dir = os.path.dirname(local_path)
-        if local_dir and local_dir != "data":
-            os.makedirs(local_dir, exist_ok=True)
-        
-        with open(local_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        
-        # Refresh vectors even for local updates
-        try:
-            refresh_vector_stores()
-        except Exception as e:
-            log.warning(f"⚠️ Vector refresh failed: {e}")
-        
-        return JSONResponse({"status": "updated-local", "file": filename})
-
-
-@app.delete("/file/{filename}")
-def delete_file(filename: str):
-    # Decode and normalize filename
-    filename = filename.replace('%2F', '/').replace('%5C', '/')
-    
-    # Try delete from GCS, fallback to local delete
-    try:
-        bucket = storage_client.bucket(BUCKET_NAME)
-        blob = bucket.blob(filename)
-        if blob.exists():
-            blob.delete()
-            return JSONResponse({"status": "deleted", "file": filename})
-    except Exception as e:
-        log.debug(f"ℹ️ GCS delete failed for {filename}: {e}")
-
-    # Normalize path for local file system
-    filename_normalized = filename.replace('/', os.sep).replace('\\', os.sep)
-    local_path = os.path.join("data", filename_normalized)
-    
-    # Also try with forward slashes directly
-    if not os.path.exists(local_path):
-        local_path = os.path.join("data", filename.replace('\\', '/'))
-        local_path = os.path.normpath(local_path)
-    
-    if os.path.exists(local_path) and os.path.isfile(local_path):
-        try:
-            os.remove(local_path)
-            return JSONResponse({"status": "deleted-local", "file": filename})
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
-
-    return JSONResponse({"error": "File not found"}, status_code=404)
-
-# ======================
-# Globals / Memory
-# ======================
-conversation_history = []
-session_memory = []
-vector_stores = {}
-
-os.makedirs("vectorstore", exist_ok=True)
-os.makedirs("sessions", exist_ok=True)
-for _d in ("img", "css", "dist"):
-    os.makedirs(_d, exist_ok=True)
-
-# ======================
-# Static mounts
-# ======================
-if os.path.isdir("img"):
-    app.mount("/img", StaticFiles(directory="img"), name="img")
-if os.path.isdir("css"):
-    app.mount("/css", StaticFiles(directory="css"), name="css")
-if os.path.isdir("dist"):
-    app.mount("/dist", StaticFiles(directory="dist"), name="dist")
-
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    if DEBUG:
-        log.debug(f"➡️  {request.method} {request.url.path}")
-    response = await call_next(request)
-    if DEBUG:
-        log.debug(f"⬅️  {request.method} {request.url.path} -> {response.status_code}")
-    return response
-
-@app.get("/")
-def index():
-    if os.path.exists("index.html"):
-        return FileResponse("index.html")
-    return JSONResponse({
-        "message": "ABC Senior Secondary School — API online",
-        "project": GOOGLE_CLOUD_PROJECT,
-        "location": GOOGLE_CLOUD_LOCATION,
-        "vectors_refreshed_on_startup": REFRESH_VECTORS_ON_STARTUP
-    })
-
-@app.get("/files/{filename}")
-def get_file(filename: str):
-    client = storage.Client()
-    bucket = client.bucket(BUCKET_NAME)
-    blob = bucket.blob(filename)
-
-    if not blob.exists():
-        raise HTTPException(status_code=404, detail="Not Found")
-    
-    return blob.download_as_text()
-   
-@app.get("/health")
-def health():
-    return {"status": "ok", "allowed": allowed_origins}
-
-
-@app.get("/llm/health")
-def llm_health():
-    try:
-        txt = get_answer_llm().invoke("Say: Ok!").strip()
-        return {"ok": bool(txt), "model": os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"), "text": txt or "(empty)"}
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
-
-@app.post("/chat")
-async def chat(payload: dict):
-    msg = payload.get("message", "")
-    return {"reply": f"Echo: {msg}"}
-
-@app.post("/auth-check")
-def auth_check(data: dict):
-    if data.get("password") == DASHBOARD_PASSWORD:
-        return {"success": True}
-    return {"success": False}
-
-@app.post("/change-password")
-async def change_password(request: Request):
-    global DASHBOARD_PASSWORD
-    data = await request.json()
-    old_password = data.get("oldPassword", "").strip()
-    new_password = data.get("newPassword", "").strip()
-    
-    # Get current password from env (always read fresh)
-    current_password = os.getenv("DASHBOARD_PASSWORD", "modernSchool2025")
-    
-    if not old_password or old_password != current_password:
-        log.warning(f"Password change failed: incorrect old password")
-        return JSONResponse({"success": False, "error": "Current password is incorrect"}, status_code=403)
-    
-    if not new_password or len(new_password) < 4:
-        return JSONResponse({"success": False, "error": "New password must be at least 4 characters"}, status_code=400)
-    
-    # Store new password in GCS for persistence
-    try:
-        bucket = storage_client.bucket(BUCKET_NAME)
-        blob = bucket.blob("_dashboard_password.txt")
-        blob.upload_from_string(new_password, content_type="text/plain")
-        log.info("Password saved to GCS")
-    except Exception as e:
-        log.warning(f"Failed to save password to GCS: {e}")
-    
-    # Update in-memory password
-    DASHBOARD_PASSWORD = new_password
-    # Also update env (for current session)
-    os.environ["DASHBOARD_PASSWORD"] = new_password
-    
-    log.info("Password changed successfully")
-    return JSONResponse({"success": True, "message": "Password changed successfully. Please update GCP env var: --set-env-vars DASHBOARD_PASSWORD=\"" + new_password + "\""})
-
-# ======================
-# Math Utilities
-# ======================
-def solve_math_expression(expr: str):
-    try:
-        import sympy as sp
-        expr = expr.lower().replace("^", "**").replace("×", "*").replace("÷", "/").strip()
-        x, y, z = sp.symbols("x y z")
-        allowed = {"sin": lambda deg: math.sin(math.radians(float(deg))),
-                   "cos": lambda deg: math.cos(math.radians(float(deg))),
-                   "tan": lambda deg: math.tan(math.radians(float(deg))),
-                   "asin": lambda val: math.degrees(math.asin(float(val))),
-                   "acos": lambda val: math.degrees(math.acos(float(val))),
-                   "atan": lambda val: math.degrees(math.atan(float(val))),
-                   "sqrt": math.sqrt,
-                   "log": math.log10,
-                   "ln": math.log,
-                   "pi": math.pi,
-                   "e": math.e,
-                   "pow": pow,
-                   }
-        if "=" in expr:
-            lhs, rhs = expr.split("=")
-            solution = sp.solve(sp.sympify(lhs) - sp.sympify(rhs), x)
-            if not solution:
-                return "No real solution found."
-            if len(solution) == 1:
-                return f"The value of x is {solution[0]}."
-            return f"Possible values of x are: {', '.join(map(str, solution))}."
-        try:
-            simplified = sp.simplify(expr)
-            if str(simplified) != expr:
-                expr = str(simplified)
-        except Exception:
-            pass
-        result = eval(expr, {"__builtins__": None}, allowed)
-        if isinstance(result, float):
-            result = round(result, 6)
-        return f"The result is {result}"
-    except Exception as e:
-        log.warning(f"⚠️ Math solver error: {e}")
-        return None
-
-def explain_math_step_by_step(expr: str):
-    import sympy as sp
-    x, y, z = sp.symbols("x y z")
-    try:
-        expr = expr.lower().replace("^", "**").replace("×", "*")
-        if ("differentiate" in expr) or ("derivative" in expr) or ("find dy/dx" in expr):
-            target = expr.split("of")[-1].strip()
-            func = sp.sympify(target)
-            result = sp.diff(func, x)
-            return f"The derivative of {func} with respect to x is: {result}"
-        elif ("integrate" in expr) or ("integration" in expr):
-            target = expr.split("of")[-1].strip()
-            func = sp.sympify(target)
-            result = sp.integrate(func, x)
-            return f"The integral of {func} with respect to x is: {result} + C"
-        elif "=" in expr:
-            lhs, rhs = expr.split("=")
-            solution = sp.solve(sp.sympify(lhs) - sp.sympify(rhs), x)
-            steps = [f"Step 1️⃣: Start with {lhs} = {rhs}",
-                     f"Step 2️⃣: Move all terms to one side: ({lhs}) - ({rhs}) = 0",
-                     f"Step 3️⃣: Simplify and solve for x",
-                     f"✅ Solution: x = {solution}"]
-            return "\n".join(steps)
-        else:
-            simplified = sp.simplify(expr)
-            return f"Simplified form: {simplified}"
-    except Exception:
-        return None
-
-# ======================
-# Memory helpers
-# ======================
-def add_to_memory(question: str, answer: str):
-    try:
-        embed = get_embedding_model().embed_query(question)
-    except Exception as e:
-        log.warning(f"⚠️ Embedding error: {e}")
-        embed = None
-    session_memory.append({"question": question, "answer": answer, "embedding": embed})
-
-def retrieve_relevant_memory(question: str, top_n=5):
-    try:
-        query_embed = get_embedding_model().embed_query(question)
-    except Exception as e:
-        log.warning(f"⚠️ Embedding error: {e}")
-        return ""
-    if not session_memory:
-        return ""
-    def cosine_similarity(a, b):
-        if a is None or b is None:
-            return 0
-        dot = sum(x*y for x,y in zip(a,b))
-        norm_a = sum(x*x for x in a)**0.5
-        norm_b = sum(y*y for y in b)**0.5
-        if norm_a==0 or norm_b==0:
-            return 0
-        return dot/(norm_a*norm_b)
-    scored=[]
-    for entry in session_memory:
-        score = cosine_similarity(query_embed, entry["embedding"])
-        scored.append((score, entry))
-    scored.sort(reverse=True,key=lambda x:x[0])
-    top_entries = [f"Q: {e['question']}\nA: {e['answer']}" for _, e in scored[:top_n]]
-    return "\n".join(top_entries)
-
-# ======================
-# Greetings / Farewell / Emotion
-# ======================
-GREETINGS = ["hello", "hi", "hey", "good morning", "good afternoon", "good evening"]
-FAREWELLS = ["bye", "goodbye", "see you", "farewell"]
-
-def check_greeting(q: str):
-    q=q.lower()
-    if any(g in q for g in GREETINGS):
-        return "Welcome to ABC School! I'm Brightly, your assistant. How can I help you today?"
-    return None
-
-def check_farewell(q: str):
-    q=q.lower()
-    if any(f in q for f in FAREWELLS):
-        return "Goodbye! Have a great day 🌟 Come back soon!"
-    return None
-
-def detect_emotion(user_input: str):
-    factual_keywords = ["what","where","when","how","who","which","fee","fees","address","location",
-                        "principal","teacher","school","exam","contact","number","subject","student","class","admission"]
-    if any(re.search(rf"\b{kw}\b", user_input.lower()) for kw in factual_keywords):
-        return None
-    if any(emoji in user_input for emoji in ["💡", "😊", "😄", "🎉", "🥳"]):
-        return None
-    prompt=f"""
-Detect if this message is Positive (appreciation/humor) or Negative (complaint/anger).
-Return only: Positive / Negative / Neutral
-Message: {user_input}
-"""
-    try:
-        resp = get_emotion_llm().invoke(prompt).strip().capitalize()
-        if resp=="Positive":
-            responses = ["That's really kind of you, thank you 😊","Glad to hear that! You're awesome!","That made my day 😄","You're too sweet — thanks a lot!","Aww, I appreciate that 💫"]
-            return random.choice(responses)
-        elif resp=="Negative":
-            return "I'm sorry if something felt off. Let’s fix it together."
-    except Exception as e:
-        log.warning(f"⚠️ Emotion detection error: {e}")
-    return None
-
-# ======================
-# Vector store & NCERT
-# ======================
-INTENT_MAP = {
-    "fees": ["fee", "fees", "structure", "tuition"],
-    "staff": ["principal", "teacher", "staff"],
-    "address": ["address", "location", "contact"],
-    "self_identity": ["who are you", "your name", "what are you", "who created you"],
+    if (data && data.success === true) {
+      isAuthenticated = true;
+      document.getElementById('passwordOverlay').style.display = 'none';
+      document.getElementById('dashboardContainer').classList.remove('blurred');
+      await loadFiles();
+    } else {
+      showPasswordError('Incorrect password. Please try again.');
+      document.getElementById('dashboardPassword').value = '';
+      document.getElementById('dashboardPassword').focus();
+    }
+  } catch (err) {
+    console.error('Auth error:', err);
+    showPasswordError(`Authentication failed: ${err.message}. Please check your connection.`);
+  }
 }
 
-def refresh_vector_stores():
-    global vector_stores
-    vector_stores={}
-    if load_vector_store is None:
-        log.info("ℹ️ load_vector_store unavailable; skipping vector build.")
-        return
-    if not os.path.isdir("data"):
-        log.info("ℹ️ No data directory found; skipping vector build.")
-        return
-    current_files = {os.path.splitext(f)[0]: os.path.join("data", f) for f in os.listdir("data") if f.endswith(".txt")}
-    for name,file in current_files.items():
-        try:
-            retriever = load_vector_store()
-            if retriever:
-                vector_stores[name]=retriever
-        except Exception as e:
-            log.warning(f"⚠️ Failed to build retriever for '{file}': {e}")
-    log.info(f"✅ Vector stores loaded: {list(vector_stores.keys())}")
 
-# ======================
-# Helper utilities
-# ======================
-def split_subquestions(q: str):
-    if not any(sep in q.lower() for sep in [" and ", ";", "?"]):
-        return [q.strip()]
-    return [s.strip() for s in re.split(r"[?;]| and ", q) if s.strip()]
-
-CLASS_MAP = {
-    "lkg": "LKG", "ukg": "UKG", "1st": "I", "first": "I", "i": "I",
-    "2nd": "II", "second": "II", "3rd": "III", "third": "III",
-    "4th": "IV", "5th": "V", "6th": "VI", "7th": "VII", "8th": "VIII",
-    "9th": "IX", "10th": "X", "tenth": "X",
-    "11th cs": "XI-CS", "11th bio": "XI-BIO", "11th comm": "XI-COMM",
-    "12th cs": "XII-CS", "12th bio": "XII-BIO", "12th comm": "XII-COMM",
+function showPasswordError(msg) {
+  const err = document.getElementById('passwordError');
+  err.textContent = msg;
+  err.style.display = msg ? 'block' : 'none';
 }
 
-def safe_retrieve(retriever, query):
-    if hasattr(retriever, "get_relevant_documents"):
-        return retriever.get_relevant_documents(query)
-    return retriever._get_relevant_documents(query, run_manager=None)
+// === File Operations ===
+async function loadFiles() {
+  const listEl = document.getElementById('fileList');
+  listEl.innerHTML = '<div class="loading">Loading files...</div>';
+  
+  try {
+    const res = await fetch(`${API_BASE}/files`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      mode: 'cors'
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('Response error:', errorText);
+      throw new Error(`Failed to fetch files: ${res.status} ${res.statusText}`);
+    }
+    
+    const data = await res.json();
+    console.log('Files loaded:', data);
+    
+    // Handle both old flat format and new hierarchical format
+    if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && 'type' in data[0]) {
+      // New hierarchical format
+      fileTree = data;
+      filesData = flattenFileTree(data); // Keep flat list for backward compatibility
+    } else {
+      // Old flat format (backward compatibility)
+      filesData = Array.isArray(data) ? data : (data.files || []);
+      // Convert flat list to tree structure
+      fileTree = buildTreeFromFlatList(filesData);
+    }
+    
+    if (filesData.length === 0 && (!fileTree || fileTree.length === 0)) {
+      listEl.innerHTML = '<div class="empty-state">No files found. Click "Add File" to create one.</div>';
+    } else {
+      renderFileList();
+    }
+  } catch (err) {
+    console.error('Load files error:', err);
+    listEl.innerHTML = `<div class="error-state">Failed to load files: ${err.message}. Please check your connection and try again.</div>`;
+    showNotification(`Failed to load files: ${err.message}`, 'error');
+  }
+}
 
-# ======================
-# Admin endpoints
-# ======================
-class Query(BaseModel):
-    question: str
+function flattenFileTree(tree) {
+  const result = [];
+  for (const item of tree) {
+    if (item.type === 'file') {
+      result.push(item.path);
+    } else if (item.type === 'folder' && item.children) {
+      result.push(...flattenFileTree(item.children));
+    }
+  }
+  return result;
+}
 
-@app.post("/admin/refresh")
-def admin_refresh():
-    try:
-        refresh_vector_stores()
-        return {"ok": True,"message":"Vectors refreshed","stores": list(vector_stores.keys())}
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"ok": False,"error": str(e)})
+function buildTreeFromFlatList(flatList) {
+  const tree = {};
+  for (const filepath of flatList) {
+    const parts = filepath.split('/');
+    let current = tree;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (!current[part]) {
+        current[part] = { type: 'folder', children: {} };
+      }
+      current = current[part].children;
+    }
+    const filename = parts[parts.length - 1];
+    current[filename] = { type: 'file', path: filepath };
+  }
+  
+  // Convert to list format
+  function convertToList(obj, prefix = '') {
+    const result = [];
+    for (const [name, item] of Object.entries(obj).sort()) {
+      if (item.type === 'folder') {
+        result.push({
+          name,
+          type: 'folder',
+          path: prefix + name + '/',
+          children: convertToList(item.children, prefix + name + '/')
+        });
+      } else {
+        result.push({
+          name,
+          type: 'file',
+          path: item.path
+        });
+      }
+    }
+    return result;
+  }
+  
+  return convertToList(tree);
+}
 
-# ======================
-# Ask endpoint
-# ======================
-@app.post("/ask")
-async def ask(query: Query):
-    q_text=query.question.strip()
-    final_answers=[]
-    math_regex = re.compile(r"d/dx|dx|differentiate|derive|integrate|roots|equation|simplify|sin|cos|tan|log|sqrt|=|[\d+\-*/^()]")
-    if math_regex.search(q_text):
-        step_result=explain_math_step_by_step(q_text)
-        if step_result:
-            add_to_memory(q_text,step_result)
-            conversation_history.append({"question":q_text,"answer":step_result})
-            return JSONResponse({"answer":step_result,"history":conversation_history})
-        math_result=solve_math_expression(q_text)
-        if math_result:
-            add_to_memory(q_text,math_result)
-            conversation_history.append({"question":q_text,"answer":math_result})
-            return JSONResponse({"answer":math_result,"history":conversation_history})
-    if resp:=check_greeting(q_text):
-        return JSONResponse({"answer":resp,"history":conversation_history})
-    if resp:=check_farewell(q_text):
-        return JSONResponse({"answer":resp,"history":conversation_history})
-    if resp:=detect_emotion(q_text):
-        return JSONResponse({"answer":resp,"history":conversation_history})
-    answer=None
-    lower_q=q_text.lower()
-    if any(phrase in lower_q for phrase in INTENT_MAP["self_identity"]):
-        answer="I'm Brightly — your friendly ABC Senior Secondary School assistant."
-    elif any(word in lower_q for word in ["provide","offer","help","assist","what can you"]):
-        answer=random.choice(["I can help you with school details, fees, admissions, exams, and staff information.",
-                              "I assist with queries about ABC Senior Secondary School — like fees, staff, or classes.",
-                              "I provide details about school activities, admissions, and academic info.",
-                              "I’m here to share school-related information and help you find what you need!"])
-    if answer:
-        add_to_memory(q_text,answer)
-        conversation_history.append({"question":q_text,"answer":answer})
-        return JSONResponse({"answer":answer,"history":conversation_history})
-    sub_qs=split_subquestions(q_text)
-    simple_math_questions={"quadratic equations":"A quadratic equation is of the form ax² + bx + c = 0. The solutions are x = [-b ± √(b² - 4ac)] / 2a."}
-    for sq in sub_qs:
-        answer=None
-        for key,val in simple_math_questions.items():
-            if key in sq.lower():
-                answer=val
-                break
-        if not answer and math_regex.search(sq):
-            step_result=explain_math_step_by_step(sq)
-            answer=step_result or solve_math_expression(sq)
-        if not answer:
-            context=""
+let fileItemIndex = 0;
 
-            for store_name,retriever in vector_stores.items():
-                try:
-                    results=safe_retrieve(retriever,sq)
-                    if results:
-                        context+="\n".join([doc.page_content for doc in results])+"\n"
-                except Exception as e:
-                    log.warning(f"⚠️ Retriever '{store_name}' error: {e}")
-            conv_context=retrieve_relevant_memory(sq)
-            if conv_context:
-                context+="\n--- Previous conversation ---\n"+conv_context
-            if not context.strip():
-                context="No data found."
-            prompt = f"""
-You are Brightly, the official AI assistant of ABC school, Chennai.
-in 2026
-RULES:
-- Answer School content ONLY using the retrieved context below but if the question is based on ncert, educational thing then give answer directly without from the context.
-- If the School info is not in context: "I currently don’t have that information in my records 
-- Allowed topics: school info, facilities, fees, reopening, events, NCERT Physics/Chemistry/Maths (6–12).
-- Not allowed: politics, religion, controversial topics. If asked:
-  "I’m not allowed to discuss that. I can help with school-related queries instead."
-- use emojis of your own where ever possible
-- you should give answers to maths, physics , chemistry questions even though they are unrelated .
+function renderFileList() {
+  const list = document.getElementById('fileList');
+  list.innerHTML = '';
+  fileItemIndex = 0; // Reset index for color rotation
+  
+  if (fileTree && fileTree.length > 0) {
+    renderTreeItems(fileTree, list, 0);
+  } else {
+    // Fallback to flat list if tree is empty
+    filesData.forEach((filename) => {
+      createFileItem(filename, list);
+    });
+  }
+}
 
-FORMATTING (chat bubble):
-- Max line width: 200 px.
-- the font used in the ui is comic sans ms
-- Use short lines and frequent line breaks.
-- One idea per line; no large paragraphs.
-- Never exceed 8 lines unless needed.
-- Highlight key terms with **bold**.
-- Use spacing exactly like this:
+function renderTreeItems(items, container, depth = 0) {
+  items.forEach((item) => {
+    if (item.type === 'folder') {
+      createFolderItem(item, container, depth);
+    } else {
+      createFileItem(item.path, container, depth);
+    }
+  });
+}
 
- **Title / Summary** (do this also when asked about fee structure)
+function createFolderItem(folder, container, depth) {
+  const folderItem = document.createElement('div');
+  folderItem.className = 'folder-item';
+  folderItem.style.paddingLeft = `${depth * 20 + 12}px`;
+  folderItem.dataset.folderPath = folder.path;
+  
+  const isExpanded = expandedFolders.has(folder.path);
+  
+  const folderHeader = document.createElement('div');
+  folderHeader.className = 'folder-header';
+  
+  const toggleIcon = document.createElement('span');
+  toggleIcon.className = 'folder-toggle';
+  toggleIcon.textContent = isExpanded ? '📂' : '📁';
+  toggleIcon.style.marginRight = '8px';
+  toggleIcon.style.cursor = 'pointer';
+  
+  const folderName = document.createElement('span');
+  folderName.className = 'folder-name';
+  folderName.textContent = folder.name;
+  
+  folderHeader.appendChild(toggleIcon);
+  folderHeader.appendChild(folderName);
+  folderItem.appendChild(folderHeader);
+  
+  // Toggle expand/collapse
+  folderHeader.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isExpanded) {
+      expandedFolders.delete(folder.path);
+    } else {
+      expandedFolders.add(folder.path);
+    }
+    renderFileList(); // Re-render to update
+  });
+  
+  // Long press to rename folder
+  let pressTimer = null;
+  folderHeader.addEventListener('mousedown', (e) => {
+    pressTimer = setTimeout(() => {
+      startRename(folder.path, null, folderName, true); // true indicates it's a folder
+    }, 800);
+  });
+  
+  folderHeader.addEventListener('mouseup', () => {
+    clearTimeout(pressTimer);
+  });
+  
+  folderHeader.addEventListener('mouseleave', () => {
+    clearTimeout(pressTimer);
+  });
+  
+  // Create children container
+  const childrenContainer = document.createElement('div');
+  childrenContainer.className = 'folder-children';
+  childrenContainer.style.display = isExpanded ? 'block' : 'none';
+  
+  if (folder.children && folder.children.length > 0) {
+    renderTreeItems(folder.children, childrenContainer, depth + 1);
+  }
+  
+  folderItem.appendChild(childrenContainer);
+  container.appendChild(folderItem);
+}
 
-• short point
+function createFileItem(filepath, container, depth = 0) {
+  const item = document.createElement('div');
+  item.className = 'file-item';
+  item.dataset.filename = filepath;
+  item.style.paddingLeft = `${depth * 20 + 12}px`;
+  
+  // Color rotation for beautiful file items
+  const colorClass = `color-${fileItemIndex % 8}`;
+  item.classList.add(colorClass);
+  fileItemIndex++;
+  
+  // Check if file is currently open
+  if (currentFiles[filepath]) {
+    item.classList.add('active');
+  }
+  
+  const title = document.createElement('div');
+  title.className = 'file-title';
+  const filename = filepath.split('/').pop();
+  title.textContent = prettifyFileName(filename);
+  
+  item.appendChild(title);
+  
+  // Click to open file
+  item.addEventListener('click', (e) => {
+    if (!e.target.closest('.file-item-actions')) {
+      openFile(filepath);
+    }
+  });
+  
+  // Long press to rename
+  let pressTimer = null;
+  item.addEventListener('mousedown', (e) => {
+    pressTimer = setTimeout(() => {
+      startRename(filepath, item);
+    }, 800);
+  });
+  
+  item.addEventListener('mouseup', () => {
+    clearTimeout(pressTimer);
+  });
+  
+  item.addEventListener('mouseleave', () => {
+    clearTimeout(pressTimer);
+  });
+  
+  // Hover effect
+  item.addEventListener('mouseenter', () => {
+    item.style.transform = 'translateX(8px) scale(1.02)';
+  });
+  
+  item.addEventListener('mouseleave', () => {
+    if (!currentFiles[filepath]) {
+      item.style.transform = 'translateX(0) scale(1)';
+    }
+  });
+  
+  container.appendChild(item);
+}
 
-• short point
+function prettifyFileName(filename) {
+  return filename
+    .replace(/\.txt$/i, '')
+    .replace(/[_-]/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
 
-• short point
+function filterFiles() {
+  const query = document.getElementById('searchFiles').value.toLowerCase().trim();
+  
+  if (!query) {
+    // If no query, show all items and restore normal state
+    const items = document.querySelectorAll('.file-item, .folder-item, .folder-children');
+    items.forEach((item) => {
+      item.style.display = '';
+    });
+    return;
+  }
+  
+  // Simple search - just show/hide items without re-rendering
+  const items = document.querySelectorAll('.file-item, .folder-item');
+  const foldersToExpand = new Set();
+  
+  items.forEach((item) => {
+    const filename = item.dataset.filename || item.dataset.folderPath || '';
+    const displayName = item.querySelector('.file-title')?.textContent || 
+                        item.querySelector('.folder-name')?.textContent || '';
+    
+    const matches = filename.toLowerCase().includes(query) || 
+                    displayName.toLowerCase().includes(query);
+    
+    if (matches) {
+      item.style.display = '';
+      
+      // If it's a folder and matches, expand it
+      if (item.classList.contains('folder-item')) {
+        const folderPath = item.dataset.folderPath;
+        if (folderPath) {
+          foldersToExpand.add(folderPath);
+          // Show children
+          const children = item.querySelector('.folder-children');
+          if (children) {
+            children.style.display = 'block';
+          }
+        }
+      }
+      
+      // Show all parent folders
+      let parent = item.parentElement;
+      while (parent) {
+        if (parent.classList.contains('folder-children')) {
+          parent.style.display = 'block';
+          const folderItem = parent.parentElement;
+          if (folderItem && folderItem.classList.contains('folder-item')) {
+            folderItem.style.display = '';
+            const folderPath = folderItem.dataset.folderPath;
+            if (folderPath) {
+              foldersToExpand.add(folderPath);
+            }
+            parent = folderItem.parentElement;
+          } else {
+            break;
+          }
+        } else {
+          parent = parent.parentElement;
+        }
+      }
+    } else {
+      // Hide item if it doesn't match
+      item.style.display = 'none';
+    }
+  });
+  
+  // Expand folders that need to be shown
+  foldersToExpand.forEach(path => {
+    expandedFolders.add(path);
+    // Escape special characters for querySelector
+    const escapedPath = path.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&');
+    const folderItem = document.querySelector(`[data-folder-path="${escapedPath}"]`);
+    if (folderItem) {
+      const children = folderItem.querySelector('.folder-children');
+      if (children) {
+        children.style.display = 'block';
+      }
+      const toggleIcon = folderItem.querySelector('.folder-toggle');
+      if (toggleIcon) {
+        toggleIcon.textContent = '📂';
+      }
+    }
+  });
+}
 
-🟡 Ask if the user wants more.
+// === Open File ===
+async function openFile(filename) {
+  // Check if already open
+  if (currentFiles[filename]) {
+    // Scroll to existing block
+    const block = document.querySelector(`[data-file-block="${filename}"]`);
+    if (block) {
+      block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      block.classList.add('highlight');
+      setTimeout(() => block.classList.remove('highlight'), 2000);
+    }
+    return;
+  }
+  
+  try {
+    // Properly encode the filename, handling slashes
+    const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('/');
+    const res = await fetch(`${API_BASE}/file/${encodedFilename}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      mode: 'cors'
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: 'File not found' }));
+      throw new Error(errorData.error || 'File not found');
+    }
+    
+    const data = await res.json();
+    console.log(`✅ File opened: ${filename}`);
+    addFileBlock(filename, data.content || '');
+    
+    // Mark as open in sidebar
+    // Escape special characters for querySelector
+    const escapedFilename = filename.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&');
+    const item = document.querySelector(`[data-filename="${escapedFilename}"]`);
+    if (item) {
+      item.classList.add('active');
+    }
+  } catch (err) {
+    console.error('Open file error:', err);
+    showNotification(`Failed to open file: ${err.message}`, 'error');
+  }
+}
 
-FORMULA FORMAT:
-**Name**:
-\( formula \)
-(short meaning)
+// === Create File Block ===
+function addFileBlock(filename, content) {
+  const container = document.getElementById('contentArea');
+  const welcomeMsg = document.getElementById('welcomeMessage');
+  if (welcomeMsg) {
+    welcomeMsg.style.display = 'none';
+  }
+  
+  // Check if block already exists
+  const existing = document.querySelector(`[data-file-block="${filename}"]`);
+  if (existing) {
+    existing.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  
+  const block = document.createElement('div');
+  block.className = 'file-block';
+  block.dataset.fileBlock = filename;
+  
+  // Header
+  const header = document.createElement('div');
+  header.className = 'file-block-header';
+  
+  const title = document.createElement('div');
+  title.className = 'file-block-title';
+  title.textContent = prettifyFileName(filename);
+  
+  const actions = document.createElement('div');
+  actions.className = 'file-block-actions';
+  
+  const editBtn = document.createElement('button');
+  editBtn.className = 'action-btn edit-btn';
+  editBtn.innerHTML = '✏️ Edit';
+  editBtn.title = 'Edit file';
+  
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'action-btn save-btn';
+  saveBtn.innerHTML = '💾 Save';
+  saveBtn.title = 'Save changes';
+  saveBtn.style.display = 'none';
+  
+  const renameBtn = document.createElement('button');
+  renameBtn.className = 'action-btn rename-btn';
+  renameBtn.innerHTML = '✏️ Rename';
+  renameBtn.title = 'Rename file';
+  
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'action-btn delete-btn';
+  deleteBtn.innerHTML = '🗑️ Delete';
+  deleteBtn.title = 'Delete file';
+  
+  actions.appendChild(editBtn);
+  actions.appendChild(saveBtn);
+  actions.appendChild(renameBtn);
+  actions.appendChild(deleteBtn);
+  
+  header.appendChild(title);
+  header.appendChild(actions);
+  
+  // Content area
+  const contentDiv = document.createElement('div');
+  contentDiv.className = 'file-block-content';
+  
+  const displayDiv = document.createElement('div');
+  displayDiv.className = 'file-content-display';
+  displayDiv.textContent = content;
+  
+  const textarea = document.createElement('textarea');
+  textarea.className = 'file-content-editor';
+  textarea.value = content;
+  textarea.style.display = 'none';
+  
+  contentDiv.appendChild(displayDiv);
+  contentDiv.appendChild(textarea);
+  
+  block.appendChild(header);
+  block.appendChild(contentDiv);
+  
+  // Event handlers
+  let isEditing = false;
+  
+  editBtn.addEventListener('click', () => {
+    if (!isEditing) {
+      isEditing = true;
+      displayDiv.style.display = 'none';
+      textarea.style.display = 'block';
+      textarea.focus();
+      editBtn.style.display = 'none';
+      saveBtn.style.display = 'inline-flex';
+    }
+  });
+  
+  saveBtn.addEventListener('click', async () => {
+    await saveFile(filename, textarea.value);
+    displayDiv.textContent = textarea.value;
+    displayDiv.style.display = 'block';
+    textarea.style.display = 'none';
+    editBtn.style.display = 'inline-flex';
+    saveBtn.style.display = 'none';
+    isEditing = false;
+  });
+  
+  renameBtn.addEventListener('click', () => {
+    startRename(filename, null, title);
+  });
+  
+  deleteBtn.addEventListener('click', async () => {
+    if (confirm(`Are you sure you want to delete "${filename}"?`)) {
+      await deleteFile(filename);
+      block.remove();
+      
+      // Show welcome message if no files left
+      if (container.children.length === 0 || 
+          (container.children.length === 1 && container.querySelector('.welcome-message'))) {
+        const welcomeMsg = document.getElementById('welcomeMessage');
+        if (welcomeMsg) {
+          welcomeMsg.style.display = 'flex';
+        }
+      }
+    }
+  });
+  
+  container.appendChild(block);
+  block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  
+  // Mark as open
+  currentFiles[filename] = true;
+}
 
-META QUESTIONS:
-If the user asks "what did I ask now?" respond with the exact previous user message.
+// === Save File ===
+async function saveFile(filename, content) {
+  try {
+    const res = await fetch(`${API_BASE}/file/update`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ filename, content })
+    });
+    
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || 'Save failed');
+    }
+    
+    const data = await res.json();
+    showNotification(`File "${filename}" saved successfully!`, 'success');
+    return data;
+  } catch (err) {
+    console.error('Save error:', err);
+    showNotification(`Failed to save file: ${err.message}`, 'error');
+    throw err;
+  }
+}
 
-TONE:
-Friendly, simple, helpful, school-appropriate.
+// === Delete File ===
+async function deleteFile(filename) {
+  try {
+    // Properly encode the filename, handling slashes
+    const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('/');
+    const res = await fetch(`${API_BASE}/file/${encodedFilename}`, {
+      method: 'DELETE'
+    });
+    
+    if (!res.ok) {
+      throw new Error('Delete failed');
+    }
+    
+    // Remove from local state
+    filesData = filesData.filter(f => f !== filename);
+    delete currentFiles[filename];
+    
+    // Update sidebar
+    // Escape special characters for querySelector
+    const escapedFilename = filename.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&');
+    const item = document.querySelector(`[data-filename="${escapedFilename}"]`);
+    if (item) {
+      item.classList.remove('active');
+    }
+    
+    // Reload files to update tree structure
+    await loadFiles();
+    showNotification(`File "${filename}" deleted successfully!`, 'success');
+  } catch (err) {
+    console.error('Delete error:', err);
+    showNotification(`Failed to delete file: ${err.message}`, 'error');
+    throw err;
+  }
+}
 
-CONTEXT:
-{context}
+// === Rename File ===
+function startRename(filename, sidebarItem, titleElement, isFolder = false) {
+  renameTarget = { filename, sidebarItem, titleElement, isFolder };
+  const modal = document.getElementById('renameModal');
+  const input = document.getElementById('renameInput');
+  
+  if (isFolder) {
+    // For folders, extract just the folder name
+    const folderName = filename.endsWith('/') ? filename.slice(0, -1).split('/').pop() : filename.split('/').pop();
+    input.value = prettifyFileName(folderName);
+  } else {
+    // For files, extract just the filename
+    const fileOnly = filename.split('/').pop();
+    input.value = prettifyFileName(fileOnly);
+  }
+  
+  modal.classList.remove('hidden');
+  input.focus();
+  input.select();
+}
 
-USER QUESTION:
-{sq}
+async function confirmRename() {
+  const input = document.getElementById('renameInput');
+  const newName = input.value.trim();
+  
+  if (!newName) {
+    alert('Please enter a name');
+    return;
+  }
+  
+  if (!renameTarget) return;
+  
+  const { filename, sidebarItem, titleElement, isFolder } = renameTarget;
+  
+  // Handle folder renaming - show message that it's not supported yet
+  if (isFolder) {
+    showNotification('Folder renaming is not yet supported. Please rename files individually.', 'info');
+    document.getElementById('renameModal').classList.add('hidden');
+    renameTarget = null;
+    return;
+  }
+  
+  try {
+    // For files, preserve the folder path
+    const pathParts = filename.split('/');
+    const oldFileName = pathParts.pop();
+    const folderPath = pathParts.length > 0 ? pathParts.join('/') + '/' : '';
+    
+    // Fetch current content
+    const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('/');
+    const res = await fetch(`${API_BASE}/file/${encodedFilename}`);
+    if (!res.ok) throw new Error('Failed to fetch file');
+    
+    const data = await res.json();
+    const content = data.content || '';
+    
+    // Create new filename with folder path preserved
+    const newFileBase = newName.replace(/\s+/g, '_').toLowerCase() + '.txt';
+    const newFilename = folderPath + newFileBase;
+    
+    // Create new file
+    const createRes = await fetch(`${API_BASE}/file/create`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ title: newName, content })
+    });
+    
+    if (!createRes.ok) {
+      // If create fails, try with folder path
+      const createRes2 = await fetch(`${API_BASE}/file/create`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ title: folderPath + newName, content })
+      });
+      if (!createRes2.ok) throw new Error('Failed to create new file');
+    }
+    
+    // Delete old file
+    await fetch(`${API_BASE}/file/${encodedFilename}`, {
+      method: 'DELETE'
+    });
+    
+    // Update local state
+    filesData = filesData.map(f => f === filename ? newFilename : f);
+    
+    // Update UI
+    if (sidebarItem) {
+      sidebarItem.dataset.filename = newFilename;
+      const titleEl = sidebarItem.querySelector('.file-title');
+      if (titleEl) {
+        titleEl.textContent = prettifyFileName(newFileBase);
+      }
+      sidebarItem.classList.remove('active');
+    }
+    
+    if (titleElement) {
+      titleElement.textContent = prettifyFileName(newFileBase);
+    }
+    
+    // Update file block
+    // Escape special characters for querySelector
+    const escapedOldFilename = filename.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&');
+    const block = document.querySelector(`[data-file-block="${escapedOldFilename}"]`);
+    if (block) {
+      block.dataset.fileBlock = newFilename;
+      const blockTitle = block.querySelector('.file-block-title');
+      if (blockTitle) {
+        blockTitle.textContent = prettifyFileName(newFileBase);
+      }
+    }
+    
+    // Update currentFiles
+    if (currentFiles[filename]) {
+      currentFiles[newFilename] = currentFiles[filename];
+      delete currentFiles[filename];
+    }
+    
+    // Reload files to update tree structure
+    await loadFiles();
+    showNotification(`File renamed to "${newFileBase}"`, 'success');
+    
+    document.getElementById('renameModal').classList.add('hidden');
+    renameTarget = null;
+  } catch (err) {
+    console.error('Rename error:', err);
+    showNotification(`Failed to rename file: ${err.message}`, 'error');
+  }
+}
 
-FINAL ANSWER (apply all rules above):
-"""
+function cancelRename() {
+  document.getElementById('renameModal').classList.add('hidden');
+  renameTarget = null;
+}
 
-            try:
-                answer=get_answer_llm().invoke(prompt).strip()
-            except Exception as e:
-                log.warning(f"⚠️ LLM error: {e}")
-                answer="I’m having trouble accessing the data at the moment, please try again."
-        add_to_memory(sq,answer)
-        conversation_history.append({"question":sq,"answer":answer})
-        final_answers.append(answer)
-    return JSONResponse({"answer":"\n".join(final_answers),"history":conversation_history})
+// === Create New File ===
+function showCreateFileModal() {
+  const modal = document.getElementById('createFileModal');
+  const input = document.getElementById('createFileNameInput');
+  input.value = '';
+  modal.classList.remove('hidden');
+  input.focus();
+}
 
-# ======================
-# Sessions persistence
-# ======================
-SESSION_DIR="sessions"
-os.makedirs(SESSION_DIR,exist_ok=True)
-SESSION_FILE=None
+async function confirmCreateFile() {
+  const input = document.getElementById('createFileNameInput');
+  const fileName = input.value.trim();
+  
+  if (!fileName) {
+    alert('Please enter a file name');
+    return;
+  }
+  
+  try {
+    // Check if user wants to create in a folder (format: "folder/filename" or just "filename")
+    let filename, folderPath = '';
+    
+    if (fileName.includes('/')) {
+      const parts = fileName.split('/');
+      const filePart = parts.pop();
+      folderPath = parts.join('/') + '/';
+      filename = folderPath + filePart.replace(/\s+/g, '_').toLowerCase() + '.txt';
+    } else {
+      filename = fileName.replace(/\s+/g, '_').toLowerCase() + '.txt';
+    }
+    
+    const res = await fetch(`${API_BASE}/file/create`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ title: fileName, content: '' })
+    });
+    
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || 'Create failed');
+    }
+    
+    // Reload files to get updated tree structure
+    await loadFiles();
+    
+    // Open the new file
+    await openFile(filename);
+    
+    showNotification(`File "${fileName}" created successfully!`, 'success');
+    
+    document.getElementById('createFileModal').classList.add('hidden');
+  } catch (err) {
+    console.error('Create error:', err);
+    showNotification(`Failed to create file: ${err.message}`, 'error');
+  }
+}
 
-def start_new_session():
-    from datetime import datetime
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    session_file = os.path.join(SESSION_DIR, f"session_{timestamp}.json")
-    with open(session_file, "w") as f:
-        f.write("{}")  # create empty JSON
-    return session_file
+function cancelCreateFile() {
+  document.getElementById('createFileModal').classList.add('hidden');
+}
 
-def save_session_data(session_file):
-    try:
-        data_to_save=[{"question":q["question"],"answer":q["answer"]} for q in session_memory[-50:]]
-        with open(session_file,"w",encoding="utf-8") as f:
-            json.dump(data_to_save,f,ensure_ascii=False,indent=2)
-    except Exception as e:
-        log.warning(f"⚠️ Failed to save session: {e}")
+// === Search Toggle ===
+function toggleSearch() {
+  const container = document.getElementById('searchContainer');
+  container.classList.toggle('hidden');
+  
+  if (!container.classList.contains('hidden')) {
+    document.getElementById('searchFiles').focus();
+  }
+}
 
-def cleanup_old_sessions(max_files=10):
-    try:
-        files=sorted([os.path.join(SESSION_DIR,f) for f in os.listdir(SESSION_DIR) if f.endswith(".json")],key=os.path.getmtime)
-        for f in files[:-max_files]:
-            try: os.remove(f); log.info(f"🗑️ Deleted old session: {f}")
-            except Exception: pass
-    except Exception as e:
-        log.warning(f"⚠️ Session cleanup error: {e}")
+// === View Password ===
+async function showViewPasswordModal() {
+  const modal = document.getElementById('viewPasswordModal');
+  const passwordDisplay = document.getElementById('passwordDisplay');
+  const errorEl = document.getElementById('viewPasswordError');
+  
+  errorEl.textContent = '';
+  errorEl.style.display = 'none';
+  passwordDisplay.value = 'Loading...';
+  passwordDisplay.type = 'password';
+  modal.classList.remove('hidden');
+  
+  try {
+    // Try to fetch password from GCS file
+    const res = await fetch(`${API_BASE}/file/_dashboard_password.txt`, {
+      method: 'GET',
+      headers: {'Content-Type': 'application/json'},
+      mode: 'cors'
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      passwordDisplay.value = data.content || data.filename || 'Password not found in storage';
+    } else {
+      // Fallback: try to get from environment (default)
+      passwordDisplay.value = 'modernSchool2025 (default)';
+    }
+  } catch (err) {
+    console.error('View password error:', err);
+    passwordDisplay.value = 'modernSchool2025 (default)';
+    errorEl.textContent = 'Could not fetch from storage. Showing default password.';
+    errorEl.style.display = 'block';
+  }
+}
 
-# ======================
-# Startup / Shutdown
-# ======================
-from fastapi import FastAPI
-from vector import load_vector_store
+function togglePasswordVisibility() {
+  const passwordDisplay = document.getElementById('passwordDisplay');
+  const toggleBtn = document.getElementById('togglePasswordVisibility');
+  
+  if (passwordDisplay.type === 'password') {
+    passwordDisplay.type = 'text';
+    toggleBtn.textContent = '🙈';
+  } else {
+    passwordDisplay.type = 'password';
+    toggleBtn.textContent = '👁️';
+  }
+}
 
-vector_store = None
+function closeViewPasswordModal() {
+  document.getElementById('viewPasswordModal').classList.add('hidden');
+}
 
-@app.on_event("startup")
-async def startup_event():
-    global vector_store, SESSION_DIR
+// === Change Password ===
+function showChangePasswordModal() {
+  const modal = document.getElementById('changePasswordModal');
+  document.getElementById('oldPasswordInput').value = '';
+  document.getElementById('newPasswordInput').value = '';
+  document.getElementById('confirmPasswordInput').value = '';
+  const errorEl = document.getElementById('changePasswordError');
+  errorEl.textContent = '';
+  errorEl.style.display = 'none';
+  modal.classList.remove('hidden');
+  document.getElementById('oldPasswordInput').focus();
+}
 
-    # --- Ensure sessions directory exists ---
-    os.makedirs(SESSION_DIR, exist_ok=True)
-    log.info("📂 Session directory ready.")
+async function confirmChangePassword() {
+  const oldPassword = document.getElementById('oldPasswordInput').value.trim();
+  const newPassword = document.getElementById('newPasswordInput').value.trim();
+  const confirmPassword = document.getElementById('confirmPasswordInput').value.trim();
+  const errorEl = document.getElementById('changePasswordError');
+  
+  errorEl.style.display = 'none';
+  errorEl.textContent = '';
+  
+  if (!oldPassword || !newPassword || !confirmPassword) {
+    errorEl.textContent = 'All fields are required';
+    errorEl.style.display = 'block';
+    return;
+  }
+  
+  if (newPassword !== confirmPassword) {
+    errorEl.textContent = 'New passwords do not match';
+    errorEl.style.display = 'block';
+    return;
+  }
+  
+  if (newPassword.length < 4) {
+    errorEl.textContent = 'New password must be at least 4 characters';
+    errorEl.style.display = 'block';
+    return;
+  }
+  
+  try {
+    const res = await fetch(`${API_BASE}/change-password`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ oldPassword, newPassword })
+    });
+    
+    const data = await res.json();
+    
+    if (data && data.success) {
+      showNotification('Password changed successfully!', 'success');
+      document.getElementById('changePasswordModal').classList.add('hidden');
+    } else {
+      errorEl.textContent = data.error || 'Failed to change password';
+      errorEl.style.display = 'block';
+    }
+  } catch (err) {
+    console.error('Change password error:', err);
+    errorEl.textContent = 'Failed to change password. Please try again.';
+    errorEl.style.display = 'block';
+  }
+}
 
-    # --- Basic startup logs ---
-    log.info("🚀 Server starting up...")
-    log.info(f"   Project = {GOOGLE_CLOUD_PROJECT}")
-    log.info(f"   Location = {GOOGLE_CLOUD_LOCATION}")
-    log.info(f"   Refresh vectors on startup = {REFRESH_VECTORS_ON_STARTUP}")
+function cancelChangePassword() {
+  document.getElementById('changePasswordModal').classList.add('hidden');
+}
 
-    # --- Load Vector DB (non-blocking: may still be warming) ---
-    vector_store = load_vector_store()  # returns None until ready
-    log.info("📦 Vector store loaded (or warming).")
+// === Notification System ===
+function showNotification(message, type = 'info') {
+  const notification = document.createElement('div');
+  notification.className = `notification ${type}`;
+  notification.textContent = message;
+  
+  document.body.appendChild(notification);
+  
+  setTimeout(() => {
+    notification.classList.add('show');
+  }, 10);
+  
+  setTimeout(() => {
+    notification.classList.remove('show');
+    setTimeout(() => notification.remove(), 300);
+  }, 3000);
+}
 
-    # --- Cleanup any old junk session files ---
-    cleanup_old_sessions(max_files=10)
-
-    # --- Optional vector refresh ---
-    if REFRESH_VECTORS_ON_STARTUP:
-        refresh_vector_stores()
-        log.info("✅ Vector stores + NCERT data loaded.")
-    else:
-        log.info("⏭️ Skipping vector refresh/load on startup.")
-
-@app.on_event("shutdown")
-def shutdown_event():
-    global SESSION_FILE
-    os.makedirs(SESSION_DIR, exist_ok=True)
-
-    if SESSION_FILE is None:
-        SESSION_FILE = start_new_session()
-
-    save_session_data(SESSION_FILE)
-    cleanup_old_sessions(max_files=10)
-    log.info(f"Session saved: {SESSION_FILE}")
-
-
-# ======================
-# Local dev entrypoint
-# ======================
-if __name__=="__main__":
-    import uvicorn
-    port=int(os.getenv("PORT",8080))
-    uvicorn.run("api:app",host="0.0.0.0",port=port)
-
+// === Initialize ===
+document.addEventListener('DOMContentLoaded', () => {
+  // Password handlers
+  document.getElementById('enterBtn').addEventListener('click', checkPassword);
+  
+  // Demo/Change Password button in password overlay
+  const demoBtn = document.getElementById('demoBtn');
+  if (demoBtn) {
+    demoBtn.addEventListener('click', () => {
+      showChangePasswordModal();
+    });
+  }
+  
+  // Enter key on password input
+  document.getElementById('dashboardPassword').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      checkPassword();
+    }
+  });
+  
+  // File operations
+  document.getElementById('addFileBtn').addEventListener('click', showCreateFileModal);
+  document.getElementById('searchToggleBtn').addEventListener('click', toggleSearch);
+  document.getElementById('searchFiles').addEventListener('input', filterFiles);
+  
+  // View password
+  document.getElementById('viewPasswordBtn').addEventListener('click', showViewPasswordModal);
+  document.getElementById('viewPasswordCloseBtn').addEventListener('click', closeViewPasswordModal);
+  document.getElementById('viewPasswordChangeBtn').addEventListener('click', () => {
+    closeViewPasswordModal();
+    showChangePasswordModal();
+  });
+  document.getElementById('togglePasswordVisibility').addEventListener('click', togglePasswordVisibility);
+  
+  // Change password
+  document.getElementById('changePasswordConfirmBtn').addEventListener('click', confirmChangePassword);
+  document.getElementById('changePasswordCancelBtn').addEventListener('click', cancelChangePassword);
+  
+  // Modal handlers
+  document.getElementById('renameConfirmBtn').addEventListener('click', confirmRename);
+  document.getElementById('renameCancelBtn').addEventListener('click', cancelRename);
+  document.getElementById('createFileConfirmBtn').addEventListener('click', confirmCreateFile);
+  document.getElementById('createFileCancelBtn').addEventListener('click', cancelCreateFile);
+  
+  // Close modals on outside click
+  document.getElementById('renameModal').addEventListener('click', (e) => {
+    if (e.target.id === 'renameModal') {
+      cancelRename();
+    }
+  });
+  
+  document.getElementById('createFileModal').addEventListener('click', (e) => {
+    if (e.target.id === 'createFileModal') {
+      cancelCreateFile();
+    }
+  });
+  
+  document.getElementById('viewPasswordModal').addEventListener('click', (e) => {
+    if (e.target.id === 'viewPasswordModal') {
+      closeViewPasswordModal();
+    }
+  });
+  
+  document.getElementById('changePasswordModal').addEventListener('click', (e) => {
+    if (e.target.id === 'changePasswordModal') {
+      cancelChangePassword();
+    }
+  });
+  
+  // Enter key in rename input
+  document.getElementById('renameInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      confirmRename();
+    } else if (e.key === 'Escape') {
+      cancelRename();
+    }
+  });
+  
+  // Enter key in create file input
+  document.getElementById('createFileNameInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      confirmCreateFile();
+    } else if (e.key === 'Escape') {
+      cancelCreateFile();
+    }
+  });
+  
+  // Enter key in change password inputs
+  ['oldPasswordInput', 'newPasswordInput', 'confirmPasswordInput'].forEach(id => {
+    document.getElementById(id).addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        confirmChangePassword();
+      } else if (e.key === 'Escape') {
+        cancelChangePassword();
+      }
+    });
+  });
+  
+  // Focus password input on load
+  document.getElementById('dashboardPassword').focus();
+});
