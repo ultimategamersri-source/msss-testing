@@ -464,11 +464,13 @@ async function openFile(filename) {
   }
   
   try {
-    // Encode the entire filename - FastAPI will decode %2F back to /
-    // We need to encode slashes as %2F for the URL path
+    // FastAPI automatically decodes URL-encoded path parameters
+    // We need to encode slashes as %2F so FastAPI can decode them back to /
+    // Encode each path segment separately, then join with %2F
     const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('%2F');
     
-    console.log(`Attempting to open file: ${filename} (encoded: ${encodedFilename})`);
+    console.log(`Attempting to open file: ${filename}`);
+    console.log(`Encoded for URL: ${encodedFilename}`);
     
     const res = await fetch(`${API_BASE}/file/${encodedFilename}`, {
       method: 'GET',
@@ -479,17 +481,23 @@ async function openFile(filename) {
     });
     
     if (!res.ok) {
-      const errorData = await res.json().catch(() => ({ error: 'File not found' }));
-      console.error(`File open failed: ${res.status}`, errorData);
+      const errorText = await res.text();
+      console.error(`File open failed: ${res.status}`, errorText);
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { error: 'File not found' };
+      }
       throw new Error(errorData.error || `File not found (${res.status})`);
     }
     
     const data = await res.json();
-    console.log(`✅ File opened: ${filename}`, data);
+    console.log(`✅ File opened successfully: ${filename}`);
+    console.log(`Content length: ${(data.content || '').length} characters`);
     addFileBlock(filename, data.content || '');
     
     // Mark as open in sidebar
-    // Escape special characters for querySelector
     const escapedFilename = filename.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&');
     const item = document.querySelector(`[data-filename="${escapedFilename}"]`);
     if (item) {
@@ -1158,11 +1166,18 @@ document.addEventListener('DOMContentLoaded', () => {
   // Password handlers
   document.getElementById('enterBtn').addEventListener('click', checkPassword);
   
-  // View Password button in password overlay
-  const demoBtn = document.getElementById('demoBtn');
-  if (demoBtn) {
-    demoBtn.addEventListener('click', () => {
-      showViewPasswordModal();
+  // Toggle password visibility in login overlay
+  const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+  const dashboardPasswordInput = document.getElementById('dashboardPassword');
+  if (togglePasswordBtn && dashboardPasswordInput) {
+    togglePasswordBtn.addEventListener('click', () => {
+      if (dashboardPasswordInput.type === 'password') {
+        dashboardPasswordInput.type = 'text';
+        togglePasswordBtn.textContent = '🙈';
+      } else {
+        dashboardPasswordInput.type = 'password';
+        togglePasswordBtn.textContent = '👁️';
+      }
     });
   }
   
