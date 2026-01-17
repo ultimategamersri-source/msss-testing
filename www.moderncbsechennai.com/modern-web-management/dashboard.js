@@ -41,14 +41,6 @@ async function checkPassword() {
     showPasswordError('Authentication failed. Please check your connection.');
   }
 }
-function splitPath(path) {
-  const parts = path.split('/');
-  return {
-    folder: parts[0],
-    filename: parts[parts.length - 1]
-  };
-}
-
 
 
 function showPasswordError(msg) {
@@ -61,37 +53,38 @@ function showPasswordError(msg) {
 async function loadFiles() {
   const listEl = document.getElementById('fileList');
   listEl.innerHTML = '<div class="loading">Loading files...</div>';
-
+  
   try {
     const res = await fetch(`${API_BASE}/files`, {
       method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       mode: 'cors'
     });
-
+    
     if (!res.ok) {
-      throw new Error(`Failed to load files`);
+      const errorText = await res.text();
+      console.error('Response error:', errorText);
+      throw new Error(`Failed to fetch files: ${res.status} ${res.statusText}`);
     }
-
+    
     const data = await res.json();
-
-    filesData = [];
-    Object.entries(data).forEach(([folder, files]) => {
-      files.forEach(file => {
-        filesData.push(`${folder}/${file}`);
-      });
-    });
-
+    console.log('Files loaded:', data);
+    
+    filesData = Array.isArray(data) ? data : (data.files || []);
+    
     if (filesData.length === 0) {
-      listEl.innerHTML = '<div class="empty-state">No files found</div>';
+      listEl.innerHTML = '<div class="empty-state">No files found. Click "Add File" to create one.</div>';
     } else {
       renderFileList();
     }
   } catch (err) {
-    console.error(err);
-    listEl.innerHTML = `<div class="error-state">${err.message}</div>`;
+    console.error('Load files error:', err);
+    listEl.innerHTML = `<div class="error-state">Failed to load files: ${err.message}. Please check your connection and try again.</div>`;
+    showNotification(`Failed to load files: ${err.message}`, 'error');
   }
 }
-
 
 function renderFileList() {
   const list = document.getElementById('fileList');
@@ -191,9 +184,7 @@ async function openFile(filename) {
   }
   
   try {
-    const { folder, filename: oldName } = splitPath(filename);
-
-    const res = await fetch(`${API_BASE}/file?folder=${folder}&name=${oldName}`, {
+    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -353,19 +344,17 @@ function addFileBlock(filename, content) {
 // === Save File ===
 async function saveFile(filename, content) {
   try {
-    const { folder, filename: name } = splitPath(filename);
-
     const res = await fetch(`${API_BASE}/file/update`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ folder, filename: name, content })
+      body: JSON.stringify({ filename, content })
     });
-
+    
     if (!res.ok) {
       const error = await res.json();
       throw new Error(error.error || 'Save failed');
     }
-
+    
     const data = await res.json();
     showNotification(`File "${filename}" saved successfully!`, 'success');
     return data;
@@ -376,15 +365,12 @@ async function saveFile(filename, content) {
   }
 }
 
-
 // === Delete File ===
 async function deleteFile(filename) {
   try {
-    const { folder, filename: oldName } = splitPath(filename);
-    const res = await fetch(
-      `${API_BASE}/file?folder=${folder}&name=${oldName}`, 
-      {method: 'DELETE'}
-    );
+    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`, {
+      method: 'DELETE'
+    });
     
     if (!res.ok) {
       throw new Error('Delete failed');
@@ -436,9 +422,7 @@ async function confirmRename() {
   
   try {
     // Fetch current content
-    const { folder, filename: oldName } = splitPath(filename);
-    
-    const res = await fetch(`${API_BASE}/file?folder=${folder}&name=${oldName}`);
+    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`);
     if (!res.ok) throw new Error('Failed to fetch file');
     
     const data = await res.json();
@@ -449,26 +433,22 @@ async function confirmRename() {
     const createRes = await fetch(`${API_BASE}/file/create`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ folder, title: newName, content })
+      body: JSON.stringify({ title: newName, content })
     });
     
     if (!createRes.ok) throw new Error('Failed to create new file');
     
     // Delete old file
-    await fetch(
-      `${API_BASE}/file?folder=${folder}&name=${oldName}`, 
-      {method: 'DELETE'}
-      );
+    await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`, {
+      method: 'DELETE'
+    });
     
     // Update local state
-    filesData = filesData.map(f =>
-      f === filename ? `${folder}/${newFilename}` : f
-    );
-
+    filesData = filesData.map(f => f === filename ? newFilename : f);
     
     // Update UI
     if (sidebarItem) {
-      sidebarItem.dataset.filename = `${folder}/${newFilename}`;
+      sidebarItem.dataset.filename = newFilename;
       sidebarItem.querySelector('.file-title').textContent = prettifyFileName(newFilename);
       sidebarItem.classList.remove('active');
     }
@@ -480,7 +460,7 @@ async function confirmRename() {
     // Update file block
     const block = document.querySelector(`[data-file-block="${filename}"]`);
     if (block) {
-      block.dataset.fileBlock = `${folder}/${newFilename}`;
+      block.dataset.fileBlock = newFilename;
       block.querySelector('.file-block-title').textContent = prettifyFileName(newFilename);
     }
     
@@ -530,7 +510,7 @@ async function confirmCreateFile() {
     const res = await fetch(`${API_BASE}/file/create`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ folder, title: fileName, content: '' })
+      body: JSON.stringify({ title: fileName, content: '' })
     });
     
     if (!res.ok) {
@@ -539,7 +519,7 @@ async function confirmCreateFile() {
     }
     
     // Add to local state
-    filesData.unshift(`txt/${filename}`);
+    filesData.unshift(filename);
     renderFileList();
     
     // Open the new file
