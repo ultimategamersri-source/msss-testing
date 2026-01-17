@@ -36,6 +36,48 @@ html, body {
   50% { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
 }
+.dashboard {
+  display: flex;
+  height: 100vh;
+  background: #0f172a;
+  color: #e5e7eb;
+  font-family: monospace;
+}
+
+.sidebar {
+  width: 260px;
+  background: #020617;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.viewer {
+  flex: 1;
+  padding: 20px;
+  background: #020617;
+  overflow-y: auto;
+}
+
+ul {
+  list-style: none;
+  padding-left: 10px;
+}
+
+.folder {
+  font-weight: bold;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+.file {
+  padding-left: 15px;
+  cursor: pointer;
+  color: #93c5fd;
+}
+
+.file:hover {
+  text-decoration: underline;
+}
 
 /* ===== PASSWORD OVERLAY ===== */
 .password-overlay {
