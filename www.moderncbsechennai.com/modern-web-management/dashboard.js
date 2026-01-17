@@ -452,7 +452,7 @@ function filterFiles() {
 // === Open File ===
 async function openFile(filename) {
   // 🔧 FIX: Build full path for files inside folders
-  const fullPath = filename;
+  const fullPath = filename.replace(/^\/+/, '');
 
   // Check if already open
   if (currentFiles[fullPath]) {
@@ -650,8 +650,8 @@ async function saveFile(filename, content) {
 
 // === Delete File ===
 async function deleteFile(filename) {
-  // 🔧 FIX: Build full path for files inside folders
-  const fullPath = filename;
+  // 🔹 FIX: normalize fullPath to remove leading slash
+  const fullPath = filename.replace(/^\/+/, '');
 
   try {
     const encodedFilename = fullPath
@@ -659,23 +659,15 @@ async function deleteFile(filename) {
       .map(part => encodeURIComponent(part))
       .join('%2F');
 
-    const res = await fetch(`${API_BASE}/file/${encodedFilename}`, {
-      method: 'DELETE'
-    });
+    const res = await fetch(`${API_BASE}/file/${encodedFilename}`, { method: 'DELETE' });
 
-    if (!res.ok) {
-      throw new Error('Delete failed');
-    }
+    if (!res.ok) throw new Error('Delete failed');
 
-    // Remove from local state
+    // Update local state
     filesData = filesData.filter(f => f !== fullPath);
     delete currentFiles[fullPath];
 
-    // Update sidebar
-    const escapedFilename = fullPath.replace(
-      /[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g,
-      '\\$&'
-    );
+    const escapedFilename = fullPath.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&');
     const item = document.querySelector(`[data-filename="${escapedFilename}"]`);
     if (item) item.classList.remove('active');
 
@@ -689,58 +681,62 @@ async function deleteFile(filename) {
 }
 
 
+
 // === Delete Folder ===
 async function deleteFolder(folderPath) {
   try {
     console.log('Deleting folder:', folderPath);
-    
-    // Get all files in the folder - make sure folderPath ends with / for matching
-    const searchPath = folderPath.endsWith('/') ? folderPath : folderPath + '/';
+
+    // Normalize folder path (remove leading slash)
+    const cleanFolderPath = folderPath.replace(/^\/+/, '');
+    const searchPath = cleanFolderPath.endsWith('/') ? cleanFolderPath : cleanFolderPath + '/';
+
+    // Find all files in the folder
     const filesInFolder = filesData.filter(f => f.startsWith(searchPath));
-    
+
     console.log(`Found ${filesInFolder.length} files in folder:`, filesInFolder);
-    
+
     if (filesInFolder.length === 0) {
       showNotification('Folder is empty. Nothing to delete.', 'info');
       await loadFiles();
       return;
     }
-    
-    // Delete all files in the folder
+
     let deletedCount = 0;
     let failedCount = 0;
-    
+
     for (const filePath of filesInFolder) {
       try {
-        // Encode slashes as %2F for FastAPI path parameter
-        const encodedPath = filePath.split('/').map(part => encodeURIComponent(part)).join('%2F');
-        console.log(`Deleting file: ${filePath} (encoded: ${encodedPath})`);
-        
-        const res = await fetch(`${API_BASE}/file/${encodedPath}`, {
-          method: 'DELETE'
-        });
-        
+        // 🔹 FIX: normalize each file path
+        const fullPath = filePath.replace(/^\/+/, '');
+        const encodedPath = fullPath.split('/').map(part => encodeURIComponent(part)).join('%2F');
+
+        console.log(`Deleting file: ${fullPath} (encoded: ${encodedPath})`);
+
+        const res = await fetch(`${API_BASE}/file/${encodedPath}`, { method: 'DELETE' });
+
         if (res.ok) {
           deletedCount++;
-          // Remove from local state
-          filesData = filesData.filter(f => f !== filePath);
-          delete currentFiles[filePath];
-          console.log(`✅ Deleted: ${filePath}`);
+          filesData = filesData.filter(f => f !== fullPath);
+          delete currentFiles[fullPath];
+          console.log(`✅ Deleted: ${fullPath}`);
         } else {
           failedCount++;
-          console.error(`❌ Failed to delete ${filePath}: ${res.status}`);
+          console.error(`❌ Failed to delete ${fullPath}: ${res.status}`);
         }
       } catch (err) {
         failedCount++;
         console.error(`Failed to delete file ${filePath}:`, err);
       }
     }
-    
-    // Reload files to update tree structure
+
     await loadFiles();
-    
+
     if (deletedCount > 0) {
-      showNotification(`Folder deleted successfully! ${deletedCount} file(s) removed.${failedCount > 0 ? ` ${failedCount} file(s) failed to delete.` : ''}`, 'success');
+      showNotification(
+        `Folder deleted successfully! ${deletedCount} file(s) removed.${failedCount > 0 ? ` ${failedCount} file(s) failed to delete.` : ''}`,
+        'success'
+      );
     } else {
       showNotification(`Failed to delete folder. No files were deleted.`, 'error');
     }
@@ -749,6 +745,7 @@ async function deleteFolder(folderPath) {
     showNotification(`Failed to delete folder: ${err.message}`, 'error');
   }
 }
+
 
 // === Rename File ===
 function startRename(filename, sidebarItem, titleElement, isFolder = false) {
