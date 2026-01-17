@@ -464,10 +464,9 @@ async function openFile(filename) {
   }
   
   try {
-    // Properly encode the filename, handling slashes - encode each segment separately
-    const pathParts = filename.split('/');
-    const encodedParts = pathParts.map(part => encodeURIComponent(part));
-    const encodedFilename = encodedParts.join('/');
+    // Encode the entire filename - FastAPI will decode %2F back to /
+    // We need to encode slashes as %2F for the URL path
+    const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('%2F');
     
     console.log(`Attempting to open file: ${filename} (encoded: ${encodedFilename})`);
     
@@ -658,8 +657,8 @@ async function saveFile(filename, content) {
 // === Delete File ===
 async function deleteFile(filename) {
   try {
-    // Properly encode the filename, handling slashes
-    const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('/');
+    // Encode slashes as %2F for FastAPI path parameter
+    const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('%2F');
     const res = await fetch(`${API_BASE}/file/${encodedFilename}`, {
       method: 'DELETE'
     });
@@ -713,7 +712,8 @@ async function deleteFolder(folderPath) {
     
     for (const filePath of filesInFolder) {
       try {
-        const encodedPath = filePath.split('/').map(part => encodeURIComponent(part)).join('/');
+        // Encode slashes as %2F for FastAPI path parameter
+        const encodedPath = filePath.split('/').map(part => encodeURIComponent(part)).join('%2F');
         console.log(`Deleting file: ${filePath} (encoded: ${encodedPath})`);
         
         const res = await fetch(`${API_BASE}/file/${encodedPath}`, {
@@ -811,8 +811,8 @@ async function confirmRename() {
         const relativePath = oldFilePath.replace(oldFolderPath + '/', '');
         const newFilePath = newFolderPath + relativePath;
         
-        // Fetch old file content
-        const encodedOldPath = oldFilePath.split('/').map(part => encodeURIComponent(part)).join('/');
+        // Fetch old file content - encode slashes as %2F
+        const encodedOldPath = oldFilePath.split('/').map(part => encodeURIComponent(part)).join('%2F');
         const res = await fetch(`${API_BASE}/file/${encodedOldPath}`);
         if (!res.ok) continue;
         
@@ -827,7 +827,7 @@ async function confirmRename() {
         });
         
         if (createRes.ok) {
-          // Delete old file
+          // Delete old file - encodedOldPath already has %2F encoding
           await fetch(`${API_BASE}/file/${encodedOldPath}`, { method: 'DELETE' });
           renamedCount++;
         }
@@ -858,8 +858,8 @@ async function confirmRename() {
     const oldFileName = pathParts.pop();
     const folderPath = pathParts.length > 0 ? pathParts.join('/') + '/' : '';
     
-    // Fetch current content
-    const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('/');
+    // Fetch current content - encode slashes as %2F
+    const encodedFilename = filename.split('/').map(part => encodeURIComponent(part)).join('%2F');
     const res = await fetch(`${API_BASE}/file/${encodedFilename}`);
     if (!res.ok) throw new Error('Failed to fetch file');
     
@@ -1024,10 +1024,25 @@ async function showViewPasswordModal() {
   errorEl.textContent = '';
   errorEl.style.display = 'none';
   passwordDisplay.type = 'password';
+  passwordDisplay.value = 'Loading...';
   modal.classList.remove('hidden');
   
-  // Just show the default password (no need to fetch from storage)
-  passwordDisplay.value = 'modernSchool2025';
+  try {
+    // Try to get the actual password from the API
+    // Since we can't directly get it, we'll show the default
+    // The actual password is stored in environment variable DASHBOARD_PASSWORD
+    // Default is "modernSchool2025" if not set
+    passwordDisplay.value = 'modernSchool2025';
+    
+    // Note: The actual password is stored server-side in environment variable
+    // This shows the default password. If it was changed, user needs to check server config.
+    errorEl.textContent = 'Note: This shows the default password. If password was changed via API, check server configuration.';
+    errorEl.style.display = 'block';
+    errorEl.style.color = '#666';
+  } catch (err) {
+    console.error('View password error:', err);
+    passwordDisplay.value = 'modernSchool2025 (default)';
+  }
 }
 
 function togglePasswordVisibility() {
