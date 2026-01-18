@@ -2,18 +2,16 @@ const API_BASE = "https://msss-backend-961983851669.asia-south1.run.app";
 
 // === State ===
 let filesData = [];
-let fileTree = {}; // Store hierarchical structure
 let currentFiles = {}; // Track open files
 let isAuthenticated = false;
 let longPressTimer = null;
 let renameTarget = null;
-let expandedFolders = new Set(); // Track expanded folders
 
 // === Password Protection ===
 async function checkPassword() {
   const pass = document.getElementById('dashboardPassword').value.trim();
   showPasswordError('');
-
+  
   if (!pass) {
     showPasswordError('Please enter a password');
     return;
@@ -25,12 +23,10 @@ async function checkPassword() {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ password: pass })
     });
-
-    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-
+    
     const data = await res.json();
-
-    if (data && data.success === true) {
+    
+    if (data && data.success) {
       isAuthenticated = true;
       document.getElementById('passwordOverlay').style.display = 'none';
       document.getElementById('dashboardContainer').classList.remove('blurred');
@@ -42,9 +38,10 @@ async function checkPassword() {
     }
   } catch (err) {
     console.error('Auth error:', err);
-    showPasswordError(`Authentication failed: ${err.message}. Please check your connection.`);
+    showPasswordError('Authentication failed. Please check your connection.');
   }
 }
+
 
 function showPasswordError(msg) {
   const err = document.getElementById('passwordError');
@@ -56,26 +53,28 @@ function showPasswordError(msg) {
 async function loadFiles() {
   const listEl = document.getElementById('fileList');
   listEl.innerHTML = '<div class="loading">Loading files...</div>';
-
+  
   try {
-    const res = await fetch(`${API_BASE}/files`, { method: 'GET', headers: { 'Content-Type': 'application/json' }, mode: 'cors' });
-
+    const res = await fetch(`${API_BASE}/files`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      mode: 'cors'
+    });
+    
     if (!res.ok) {
       const errorText = await res.text();
+      console.error('Response error:', errorText);
       throw new Error(`Failed to fetch files: ${res.status} ${res.statusText}`);
     }
-
+    
     const data = await res.json();
-
-    if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && 'type' in data[0]) {
-      fileTree = data;
-      filesData = flattenFileTree(data);
-    } else {
-      filesData = Array.isArray(data) ? data : (data.files || []);
-      fileTree = buildTreeFromFlatList(filesData);
-    }
-
-    if (filesData.length === 0 && (!fileTree || fileTree.length === 0)) {
+    console.log('Files loaded:', data);
+    
+    filesData = Array.isArray(data) ? data : (data.files || []);
+    
+    if (filesData.length === 0) {
       listEl.innerHTML = '<div class="empty-state">No files found. Click "Add File" to create one.</div>';
     } else {
       renderFileList();
@@ -87,252 +86,95 @@ async function loadFiles() {
   }
 }
 
-function flattenFileTree(tree) {
-  const result = [];
-  for (const item of tree) {
-    if (item.type === 'file') result.push(item.path);
-    else if (item.type === 'folder' && item.children) result.push(...flattenFileTree(item.children));
-  }
-  return result;
-}
-
-function buildTreeFromFlatList(flatList) {
-  const tree = {};
-  for (const filepath of flatList) {
-    const parts = filepath.split('/');
-    let current = tree;
-    for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i];
-      if (!current[part]) current[part] = { type: 'folder', children: {} };
-      current = current[part].children;
-    }
-    const filename = parts[parts.length - 1];
-    current[filename] = { type: 'file', path: filepath };
-  }
-
-  function convertToList(obj, prefix = '') {
-    const result = [];
-    for (const [name, item] of Object.entries(obj).sort()) {
-      if (item.type === 'folder') {
-        result.push({
-          name,
-          type: 'folder',
-          path: prefix + name + '/',
-          children: convertToList(item.children, prefix + name + '/')
-        });
-      } else {
-        result.push({ name, type: 'file', path: item.path });
-      }
-    }
-    return result;
-  }
-
-  return convertToList(tree);
-}
-
-let fileItemIndex = 0;
-
 function renderFileList() {
   const list = document.getElementById('fileList');
   list.innerHTML = '';
-  fileItemIndex = 0;
-
-  if (fileTree && fileTree.length > 0) renderTreeItems(fileTree, list, 0);
-  else filesData.forEach((filename) => createFileItem(filename, list));
-}
-
-function renderTreeItems(items, container, depth = 0) {
-  items.forEach((item) => {
-    if (item.type === 'folder') createFolderItem(item, container, depth);
-    else createFileItem(item.path, container, depth);
+  
+  filesData.forEach((filename, index) => {
+    const item = document.createElement('div');
+    item.className = 'file-item';
+    item.dataset.filename = filename;
+    
+    // Color rotation for beautiful file items
+    const colorClass = `color-${index % 8}`;
+    item.classList.add(colorClass);
+    
+    // Check if file is currently open
+    if (currentFiles[filename]) {
+      item.classList.add('active');
+    }
+    
+    const title = document.createElement('div');
+    title.className = 'file-title';
+    title.textContent = prettifyFileName(filename);
+    
+    item.appendChild(title);
+    
+    // Click to open file
+    item.addEventListener('click', (e) => {
+      if (!e.target.closest('.file-item-actions')) {
+        openFile(filename);
+      }
+    });
+    
+    // Long press to rename
+    let pressTimer = null;
+    item.addEventListener('mousedown', (e) => {
+      pressTimer = setTimeout(() => {
+        startRename(filename, item);
+      }, 800);
+    });
+    
+    item.addEventListener('mouseup', () => {
+      clearTimeout(pressTimer);
+    });
+    
+    item.addEventListener('mouseleave', () => {
+      clearTimeout(pressTimer);
+    });
+    
+    // Hover effect
+    item.addEventListener('mouseenter', () => {
+      item.style.transform = 'translateX(8px) scale(1.02)';
+    });
+    
+    item.addEventListener('mouseleave', () => {
+      if (!currentFiles[filename]) {
+        item.style.transform = 'translateX(0) scale(1)';
+      }
+    });
+    
+    list.appendChild(item);
   });
-}
-
-function createFolderItem(folder, container, depth) {
-  const folderItem = document.createElement('div');
-  folderItem.className = 'folder-item';
-  folderItem.style.paddingLeft = `${depth * 20 + 12}px`;
-  folderItem.dataset.folderPath = folder.path;
-
-  const isExpanded = expandedFolders.has(folder.path);
-
-  const folderHeader = document.createElement('div');
-  folderHeader.className = 'folder-header';
-
-  const toggleIcon = document.createElement('span');
-  toggleIcon.className = 'folder-toggle';
-  toggleIcon.textContent = isExpanded ? '📂' : '📁';
-  toggleIcon.style.marginRight = '8px';
-  toggleIcon.style.cursor = 'pointer';
-
-  const folderName = document.createElement('span');
-  folderName.className = 'folder-name';
-  folderName.textContent = folder.name;
-
-  folderHeader.appendChild(toggleIcon);
-  folderHeader.appendChild(folderName);
-  folderItem.appendChild(folderHeader);
-
-  folderHeader.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (isExpanded) expandedFolders.delete(folder.path);
-    else expandedFolders.add(folder.path);
-    renderFileList();
-  });
-
-  // Long press to rename folder
-  let pressTimer = null;
-  folderHeader.addEventListener('mousedown', (e) => {
-    pressTimer = setTimeout(() => startRename(folder.path, null, folderName, true), 800);
-  });
-  folderHeader.addEventListener('mouseup', () => clearTimeout(pressTimer));
-  folderHeader.addEventListener('mouseleave', () => clearTimeout(pressTimer));
-
-  // Hover delete button
-  const folderActions = document.createElement('div');
-  folderActions.className = 'folder-actions';
-  folderActions.style.display = 'none';
-  folderActions.style.position = 'absolute';
-  folderActions.style.right = '10px';
-  folderActions.style.top = '50%';
-  folderActions.style.transform = 'translateY(-50%)';
-
-  const deleteFolderBtn = document.createElement('button');
-  deleteFolderBtn.className = 'folder-delete-btn';
-  deleteFolderBtn.innerHTML = '🗑️';
-  deleteFolderBtn.title = 'Delete folder';
-  deleteFolderBtn.style.background = 'rgba(255, 0, 0, 0.2)';
-  deleteFolderBtn.style.border = 'none';
-  deleteFolderBtn.style.borderRadius = '6px';
-  deleteFolderBtn.style.padding = '6px 10px';
-  deleteFolderBtn.style.cursor = 'pointer';
-  deleteFolderBtn.style.color = 'white';
-  deleteFolderBtn.style.fontSize = '14px';
-
-  deleteFolderBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    alert('Folder deletion is disabled to maintain object store integrity.');
-  });
-
-  folderActions.appendChild(deleteFolderBtn);
-  folderHeader.appendChild(folderActions);
-  folderHeader.addEventListener('mouseenter', () => { folderActions.style.display = 'block'; });
-  folderHeader.addEventListener('mouseleave', () => { folderActions.style.display = 'none'; });
-
-  const childrenContainer = document.createElement('div');
-  childrenContainer.className = 'folder-children';
-  childrenContainer.style.display = isExpanded ? 'block' : 'none';
-
-  if (folder.children && folder.children.length > 0) renderTreeItems(folder.children, childrenContainer, depth + 1);
-  folderItem.appendChild(childrenContainer);
-  container.appendChild(folderItem);
-}
-
-function createFileItem(filepath, container, depth = 0) {
-  const item = document.createElement('div');
-  item.className = 'file-item';
-  item.dataset.filename = filepath;
-  item.style.paddingLeft = `${depth * 20 + 12}px`;
-
-  const colorClass = `color-${fileItemIndex % 8}`;
-  item.classList.add(colorClass);
-  fileItemIndex++;
-
-  if (currentFiles[filepath]) item.classList.add('active');
-
-  const title = document.createElement('div');
-  title.className = 'file-title';
-  const filename = filepath.split('/').pop();
-  title.textContent = prettifyFileName(filename);
-
-  item.appendChild(title);
-
-  item.addEventListener('click', (e) => {
-    if (!e.target.closest('.file-item-actions')) openFile(filepath);
-  });
-
-  let pressTimer = null;
-  item.addEventListener('mousedown', (e) => {
-    pressTimer = setTimeout(() => startRename(filepath, item), 800);
-  });
-  item.addEventListener('mouseup', () => clearTimeout(pressTimer));
-  item.addEventListener('mouseleave', () => clearTimeout(pressTimer));
-
-  item.addEventListener('mouseenter', () => { item.style.transform = 'translateX(8px) scale(1.02)'; });
-  item.addEventListener('mouseleave', () => { if (!currentFiles[filepath]) item.style.transform = 'translateX(0) scale(1)'; });
-
-  container.appendChild(item);
 }
 
 function prettifyFileName(filename) {
-  return filename.replace(/\.txt$/i, '').replace(/[_-]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function expandParentFolders(el) {
-  let parent = el.parentElement;
-  while (parent) {
-    if (parent.classList.contains('folder-children')) {
-      parent.style.display = 'block';
-      const folderItem = parent.parentElement;
-      if (folderItem && folderItem.classList.contains('folder-item')) {
-        folderItem.querySelector('.folder-toggle').textContent = '📂';
-        expandedFolders.add(folderItem.dataset.folderPath);
-        parent = folderItem.parentElement;
-      } else break;
-    } else parent = parent.parentElement;
-  }
+  return filename
+    .replace(/\.txt$/i, '')
+    .replace(/[_-]/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function filterFiles() {
-  const query = document.getElementById('searchFiles').value.toLowerCase().trim();
-  if (!query) {
-    const items = document.querySelectorAll('.file-item, .folder-item, .folder-children');
-    items.forEach((item) => { item.style.display = ''; });
-    return;
-  }
-
-  const items = document.querySelectorAll('.file-item, .folder-item');
-  const foldersToExpand = new Set();
-
+  const query = document.getElementById('searchFiles').value.toLowerCase();
+  const items = document.querySelectorAll('.file-item');
+  
   items.forEach((item) => {
-    const filename = item.dataset.filename || item.dataset.folderPath || '';
-    const displayName = item.querySelector('.file-title')?.textContent || item.querySelector('.folder-name')?.textContent || '';
-
-    const matches = filename.toLowerCase().includes(query) || displayName.toLowerCase().includes(query);
-
-    if (matches) {
-      item.style.display = '';
-      if (item.classList.contains('folder-item')) {
-        const folderPath = item.dataset.folderPath;
-        if (folderPath) foldersToExpand.add(folderPath);
-        const children = item.querySelector('.folder-children');
-        if (children) children.style.display = 'block';
-      }
-      expandParentFolders(item);
-    } else item.style.display = 'none';
-  });
-
-  foldersToExpand.forEach(path => {
-    expandedFolders.add(path);
-    const escapedPath = path.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&');
-    const folderItem = document.querySelector(`[data-folder-path="${escapedPath}"]`);
-    if (folderItem) {
-      const children = folderItem.querySelector('.folder-children');
-      if (children) children.style.display = 'block';
-      const toggleIcon = folderItem.querySelector('.folder-toggle');
-      if (toggleIcon) toggleIcon.textContent = '📂';
+    const filename = item.dataset.filename.toLowerCase();
+    if (filename.includes(query)) {
+      item.style.display = 'flex';
+    } else {
+      item.style.display = 'none';
     }
   });
 }
 
-
 // === Open File ===
 async function openFile(filename) {
-  // Build full path relative to bucket, no leading slash
-  const fullPath = filename;
-
-  if (currentFiles[fullPath]) {
-    const block = document.querySelector(`[data-file-block="${fullPath}"]`);
+  // Check if already open
+  if (currentFiles[filename]) {
+    // Scroll to existing block
+    const block = document.querySelector(`[data-file-block="${filename}"]`);
     if (block) {
       block.scrollIntoView({ behavior: 'smooth', block: 'start' });
       block.classList.add('highlight');
@@ -340,18 +182,30 @@ async function openFile(filename) {
     }
     return;
   }
-
+  
   try {
-    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(fullPath)}`, { method: 'GET' });
-    if (!res.ok) throw new Error('File not found');
-
+    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      mode: 'cors'
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: 'File not found' }));
+      throw new Error(errorData.error || 'File not found');
+    }
+    
     const data = await res.json();
-    addFileBlock(fullPath, data.content || '');
-    currentFiles[fullPath] = true;
-
-    const item = document.querySelector(`[data-filename="${fullPath}"]`);
-    if (item) item.classList.add('active');
-
+    console.log(`✅ File opened: ${filename}`);
+    addFileBlock(filename, data.content || '');
+    
+    // Mark as open in sidebar
+    const item = document.querySelector(`[data-filename="${filename}"]`);
+    if (item) {
+      item.classList.add('active');
+    }
   } catch (err) {
     console.error('Open file error:', err);
     showNotification(`Failed to open file: ${err.message}`, 'error');
@@ -493,7 +347,7 @@ async function saveFile(filename, content) {
     const res = await fetch(`${API_BASE}/file/update`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ title: filename, content })
+      body: JSON.stringify({ filename, content })
     });
     
     if (!res.ok) {
@@ -513,69 +367,46 @@ async function saveFile(filename, content) {
 
 // === Delete File ===
 async function deleteFile(filename) {
-  const fullPath = filename.replace(/^\/+/, ''); // remove leading slash
-
   try {
-    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(fullPath)}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Delete failed');
-
-    // Update local state
-    filesData = filesData.filter(f => f !== fullPath);
-    delete currentFiles[fullPath];
-
-    const item = document.querySelector(`[data-filename="${fullPath}"]`);
-    if (item) item.classList.remove('active');
-
-    await loadFiles();
-    showNotification(`File "${fullPath}" deleted successfully!`, 'success');
+    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`, {
+      method: 'DELETE'
+    });
+    
+    if (!res.ok) {
+      throw new Error('Delete failed');
+    }
+    
+    // Remove from local state
+    filesData = filesData.filter(f => f !== filename);
+    delete currentFiles[filename];
+    
+    // Update sidebar
+    const item = document.querySelector(`[data-filename="${filename}"]`);
+    if (item) {
+      item.classList.remove('active');
+    }
+    
+    renderFileList();
+    showNotification(`File "${filename}" deleted successfully!`, 'success');
   } catch (err) {
     console.error('Delete error:', err);
     showNotification(`Failed to delete file: ${err.message}`, 'error');
+    throw err;
   }
 }
 
-// -----------------------
-// Delete Folder
-// -----------------------
-async function deleteFolder(folderPath) {
-  const cleanFolderPath = folderPath.replace(/^\/+/, '');
-  const searchPath = cleanFolderPath.endsWith('/') ? cleanFolderPath : cleanFolderPath + '/';
-  const filesInFolder = filesData.filter(f => f.startsWith(searchPath));
-
-  if (filesInFolder.length === 0) {
-    showNotification('Folder is empty. Nothing to delete.', 'info');
-    await loadFiles();
-    return;
-  }
-
-  let deletedCount = 0;
-  let failedCount = 0;
-
-  for (const filePath of filesInFolder) {
-    try {
-      const fullPath = filePath.replace(/^\/+/, '');
-      const res = await fetch(`${API_BASE}/file/${fullPath}`, { method: 'DELETE' });
-      if (res.ok) {
-        deletedCount++;
-        filesData = filesData.filter(f => f !== fullPath);
-        delete currentFiles[fullPath];
-      } else failedCount++;
-    } catch {
-      failedCount++;
-    }
-  }
-
-  await loadFiles();
-
-  if (deletedCount > 0)
-    showNotification(`Folder deleted successfully! ${deletedCount} file(s) removed.${failedCount ? ` ${failedCount} failed.` : ''}`, 'success');
-  else
-    showNotification('Failed to delete folder. No files were deleted.', 'error');
+// === Rename File ===
+function startRename(filename, sidebarItem, titleElement) {
+  renameTarget = { filename, sidebarItem, titleElement };
+  const modal = document.getElementById('renameModal');
+  const input = document.getElementById('renameInput');
+  
+  input.value = prettifyFileName(filename);
+  modal.classList.remove('hidden');
+  input.focus();
+  input.select();
 }
 
-// -----------------------
-// Rename File / Folder
-// -----------------------
 async function confirmRename() {
   const input = document.getElementById('renameInput');
   const newName = input.value.trim();
@@ -584,55 +415,63 @@ async function confirmRename() {
     alert('Please enter a file name');
     return;
   }
-
-  // ✅ Validation: must end with .txt
-  if (!newName.toLowerCase().endsWith('.txt')) {
-    alert('Filename must end with .txt');
-    return;
-  }
   
   if (!renameTarget) return;
   
   const { filename, sidebarItem, titleElement } = renameTarget;
   
   try {
-    // Rename via backend (copy then delete)
-    const res = await fetch(`${API_BASE}/file/rename`, {
-      method: 'PUT',
+    // Fetch current content
+    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`);
+    if (!res.ok) throw new Error('Failed to fetch file');
+    
+    const data = await res.json();
+    const content = data.content || '';
+    
+    // Create new file
+    const newFilename = newName.replace(/\s+/g, '_').toLowerCase() + '.txt';
+    const createRes = await fetch(`${API_BASE}/file/create`, {
+      method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ old: filename, new: newName }) // send exact names
+      body: JSON.stringify({ title: newName, content })
     });
     
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ error: 'Rename failed' }));
-      throw new Error(error.error || 'Rename failed');
-    }
+    if (!createRes.ok) throw new Error('Failed to create new file');
+    
+    // Delete old file
+    await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`, {
+      method: 'DELETE'
+    });
     
     // Update local state
-    filesData = filesData.map(f => f === filename ? newName : f);
+    filesData = filesData.map(f => f === filename ? newFilename : f);
     
-    // Update sidebar
+    // Update UI
     if (sidebarItem) {
-      sidebarItem.dataset.filename = newName;
-      sidebarItem.querySelector('.file-title').textContent = prettifyFileName(newName);
+      sidebarItem.dataset.filename = newFilename;
+      sidebarItem.querySelector('.file-title').textContent = prettifyFileName(newFilename);
       sidebarItem.classList.remove('active');
     }
     
-    // Update block
-    const block = document.querySelector(`[data-file-block="${filename}"]`);
-    if (block) {
-      block.dataset.fileBlock = newName;
-      block.querySelector('.file-block-title').textContent = prettifyFileName(newName);
+    if (titleElement) {
+      titleElement.textContent = prettifyFileName(newFilename);
     }
     
-    // Update open files map
+    // Update file block
+    const block = document.querySelector(`[data-file-block="${filename}"]`);
+    if (block) {
+      block.dataset.fileBlock = newFilename;
+      block.querySelector('.file-block-title').textContent = prettifyFileName(newFilename);
+    }
+    
+    // Update currentFiles
     if (currentFiles[filename]) {
-      currentFiles[newName] = currentFiles[filename];
+      currentFiles[newFilename] = currentFiles[filename];
       delete currentFiles[filename];
     }
     
     renderFileList();
-    showNotification(`File renamed to "${newName}"`, 'success');
+    showNotification(`File renamed to "${newFilename}"`, 'success');
     
     document.getElementById('renameModal').classList.add('hidden');
     renameTarget = null;
@@ -641,28 +480,6 @@ async function confirmRename() {
     showNotification(`Failed to rename file: ${err.message}`, 'error');
   }
 }
-
-// === Rename File ===
-function startRename(filename, sidebarItem, titleElement, isFolder = false) {
-  renameTarget = { filename, sidebarItem, titleElement, isFolder };
-  const modal = document.getElementById('renameModal');
-  const input = document.getElementById('renameInput');
-  
-  if (isFolder) {
-    // For folders, extract just the folder name
-    const folderName = filename.endsWith('/') ? filename.slice(0, -1).split('/').pop() : filename.split('/').pop();
-    input.value = prettifyFileName(folderName);
-  } else {
-    // For files, extract just the filename
-    const fileOnly = filename.split('/').pop();
-    input.value = prettifyFileName(fileOnly);
-  }
-  
-  modal.classList.remove('hidden');
-  input.focus();
-  input.select();
-}
-
 
 function cancelRename() {
   document.getElementById('renameModal').classList.add('hidden');
@@ -686,33 +503,29 @@ async function confirmCreateFile() {
     alert('Please enter a file name');
     return;
   }
-
-  // ✅ Validation: must end with .txt
-  if (!fileName.toLowerCase().endsWith('.txt')) {
-    alert('Filename must end with .txt');
-    return;
-  }
   
   try {
+    const filename = fileName.replace(/\s+/g, '_').toLowerCase() + '.txt';
+    
     const res = await fetch(`${API_BASE}/file/create`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ filename: fileName, content: '' }) // use exact filename
+      body: JSON.stringify({ title: fileName, content: '' })
     });
     
     if (!res.ok) {
-      const error = await res.json().catch(() => ({ error: 'Create failed' }));
+      const error = await res.json();
       throw new Error(error.error || 'Create failed');
     }
     
     // Add to local state
-    filesData.unshift(fileName);
+    filesData.unshift(filename);
     renderFileList();
     
     // Open the new file
-    await openFile(fileName);
+    await openFile(filename);
     
-    showNotification(`File "${fileName}" created successfully!`, 'success');
+    showNotification(`File "${filename}" created successfully!`, 'success');
     
     document.getElementById('createFileModal').classList.add('hidden');
   } catch (err) {
@@ -735,51 +548,6 @@ function toggleSearch() {
   }
 }
 
-// === View Password ===
-async function showViewPasswordModal() {
-  const modal = document.getElementById('viewPasswordModal');
-  const passwordDisplay = document.getElementById('passwordDisplay');
-  const errorEl = document.getElementById('viewPasswordError');
-  
-  errorEl.textContent = '';
-  errorEl.style.display = 'none';
-  passwordDisplay.type = 'password';
-  passwordDisplay.value = 'Loading...';
-  modal.classList.remove('hidden');
-  
-  try {
-    // Try to get the actual password from the API
-    // Since we can't directly get it, we'll show the default
-    // The actual password is stored in environment variable DASHBOARD_PASSWORD
-    
-    // Note: The actual password is stored server-side in environment variable
-    // This shows the default password. If it was changed, user needs to check server config.
-    errorEl.textContent = 'Note: This shows the default password. If password was changed via API, check server configuration.';
-    errorEl.style.display = 'block';
-    errorEl.style.color = '#666';
-  } catch (err) {
-    console.error('View password error:', err);
-    passwordDisplay.value = 'modernSchool2025 (default)';
-  }
-}
-
-function togglePasswordVisibility() {
-  const passwordDisplay = document.getElementById('passwordDisplay');
-  const toggleBtn = document.getElementById('togglePasswordVisibility');
-  
-  if (passwordDisplay.type === 'password') {
-    passwordDisplay.type = 'text';
-    toggleBtn.textContent = '🙈';
-  } else {
-    passwordDisplay.type = 'password';
-    toggleBtn.textContent = '👁️';
-  }
-}
-
-function closeViewPasswordModal() {
-  document.getElementById('viewPasswordModal').classList.add('hidden');
-}
-
 // === Change Password ===
 function showChangePasswordModal() {
   const modal = document.getElementById('changePasswordModal');
@@ -791,12 +559,6 @@ function showChangePasswordModal() {
   errorEl.style.display = 'none';
   modal.classList.remove('hidden');
   document.getElementById('oldPasswordInput').focus();
-  
-  // Remove any existing view password button if it exists
-  const existingBtn = document.getElementById('viewPasswordFromChangeBtn');
-  if (existingBtn) {
-    existingBtn.remove();
-  }
 }
 
 async function confirmChangePassword() {
@@ -876,21 +638,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Password handlers
   document.getElementById('enterBtn').addEventListener('click', checkPassword);
   
-  // Toggle password visibility in login overlay
-  const togglePasswordBtn = document.getElementById('togglePasswordBtn');
-  const dashboardPasswordInput = document.getElementById('dashboardPassword');
-  if (togglePasswordBtn && dashboardPasswordInput) {
-    togglePasswordBtn.addEventListener('click', () => {
-      if (dashboardPasswordInput.type === 'password') {
-        dashboardPasswordInput.type = 'text';
-        togglePasswordBtn.textContent = '🙈';
-      } else {
-        dashboardPasswordInput.type = 'password';
-        togglePasswordBtn.textContent = '👁️';
-      }
-    });
-  }
-  
   // Enter key on password input
   document.getElementById('dashboardPassword').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -903,18 +650,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('searchToggleBtn').addEventListener('click', toggleSearch);
   document.getElementById('searchFiles').addEventListener('input', filterFiles);
   
-  // Change password button (actually opens change password modal)
-  document.getElementById('viewPasswordBtn').addEventListener('click', showChangePasswordModal);
+  // Change password
+  document.getElementById('changePasswordBtn').addEventListener('click', showChangePasswordModal);
   document.getElementById('changePasswordConfirmBtn').addEventListener('click', confirmChangePassword);
   document.getElementById('changePasswordCancelBtn').addEventListener('click', cancelChangePassword);
-  
-  // View password (accessible from change password modal)
-  document.getElementById('viewPasswordCloseBtn').addEventListener('click', closeViewPasswordModal);
-  document.getElementById('viewPasswordChangeBtn').addEventListener('click', () => {
-    closeViewPasswordModal();
-    showChangePasswordModal();
-  });
-  document.getElementById('togglePasswordVisibility').addEventListener('click', togglePasswordVisibility);
   
   // Modal handlers
   document.getElementById('renameConfirmBtn').addEventListener('click', confirmRename);
@@ -932,12 +671,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('createFileModal').addEventListener('click', (e) => {
     if (e.target.id === 'createFileModal') {
       cancelCreateFile();
-    }
-  });
-  
-  document.getElementById('viewPasswordModal').addEventListener('click', (e) => {
-    if (e.target.id === 'viewPasswordModal') {
-      closeViewPasswordModal();
     }
   });
   
