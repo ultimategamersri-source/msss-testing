@@ -48,7 +48,11 @@ async function checkPassword() {
     showPasswordError(`Authentication failed: ${err.message}. Please check your connection.`);
   }
 }
-
+function normalizeFileName(fileName) {
+  let filename = fileName.replace(/\s+/g, '_').toLowerCase();
+  if (!filename.endsWith('.txt')) filename += '.txt';
+  return filename;
+}
 
 function showPasswordError(msg) {
   const err = document.getElementById('passwordError');
@@ -760,7 +764,7 @@ async function confirmRename() {
     const pathParts = filename.split('/');
     pathParts.pop(); // remove old file name
     const folderPath = pathParts.length > 0 ? pathParts.join('/') + '/' : '';
-    const newFilename = folderPath + newName.replace(/\s+/g, '_').toLowerCase() + '.txt';
+    const newFilename = folderPath + normalizeFileName(newName);
 
     const fetchRes = await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`);
     if (!fetchRes.ok) throw new Error('Failed to fetch file');
@@ -867,9 +871,9 @@ async function confirmCreateFile() {
       const parts = fileName.split('/');
       const filePart = parts.pop();
       folderPath = parts.join('/') + '/';
-      filename = folderPath + filePart.replace(/\s+/g, '_').toLowerCase() + '.txt';
+      filename = folderPath + normalizeFileName(filePart);
     } else {
-      filename = fileName.replace(/\s+/g, '_').toLowerCase() + '.txt';
+      filename = normalizeFileName(fileName);
     }
     
     const res = await fetch(`${API_BASE}/file/create`, {
