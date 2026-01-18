@@ -87,7 +87,7 @@ async function loadFiles() {
     } else {
       // Old flat format (backward compatibility)
       filesData = (Array.isArray(data) ? data : (data.files || []))   
-        .map(f => typeof f === 'string' ? f : f.path);
+        .map(f => typeof f === 'string' ? f : f.path)
         .filter(Boolean);
       // Convert flat list to tree structure
       fileTree = buildTreeFromFlatList(filesData.map(f => ({
