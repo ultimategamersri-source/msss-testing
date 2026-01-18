@@ -86,9 +86,14 @@ async function loadFiles() {
       filesData = flattenFileTree(data); // Keep flat list for backward compatibility
     } else {
       // Old flat format (backward compatibility)
-      filesData = Array.isArray(data) ? data : (data.files || []);
+      filesData = (Array.isArray(data) ? data : (data.files || []))   
+        .map(f => typeof f === 'string' ? f : f.path);
+        .filter(Boolean);
       // Convert flat list to tree structure
-      fileTree = buildTreeFromFlatList(filesData);
+      fileTree = buildTreeFromFlatList(filesData.map(f => ({
+       ...f,
+       path: f.path || f.name
+      })));
     }
     
     if (filesData.length === 0 && (!fileTree || fileTree.length === 0)) {
@@ -316,7 +321,7 @@ function createFileItem(filepath, container, depth = 0) {
   const title = document.createElement('div');
   title.className = 'file-title';
   const filename = filepath.split('/').pop();
-  title.textContent = prettifyFileName(filename);
+  title.textContent = prettifyFileName(filename.split('/').pop());
   
   item.appendChild(title);
   
@@ -448,10 +453,9 @@ function filterFiles() {
 // === Open File ===
 async function openFile(filename) {
   // Build full path relative to bucket, no leading slash
-  const fullPath = filename;
 
-  if (currentFiles[fullPath]) {
-    const block = document.querySelector(`[data-file-block="${fullPath}"]`);
+  if (currentFiles[filename]) {
+    const block = document.querySelector(`[data-file-block="${filename}"]`);
     if (block) {
       block.scrollIntoView({ behavior: 'smooth', block: 'start' });
       block.classList.add('highlight');
@@ -461,14 +465,14 @@ async function openFile(filename) {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(fullPath)}`, { method: 'GET' });
+    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`, { method: 'GET' });
     if (!res.ok) throw new Error('File not found');
 
     const data = await res.json();
-    addFileBlock(fullPath, data.content || '');
-    currentFiles[fullPath] = true;
+    addFileBlock(filename, data.content || '');
+    currentFiles[filename] = true;
 
-    const item = document.querySelector(`[data-filename="${fullPath}"]`);
+    const item = document.querySelector(`[data-filename="${filename}"]`);
     if (item) item.classList.add('active');
 
   } catch (err) {
@@ -502,7 +506,7 @@ function addFileBlock(filename, content) {
   
   const title = document.createElement('div');
   title.className = 'file-block-title';
-  title.textContent = prettifyFileName(filename);
+  title.textContent = prettifyFileName(filename.split('/').pop());
   
   const actions = document.createElement('div');
   actions.className = 'file-block-actions';
@@ -585,8 +589,9 @@ function addFileBlock(filename, content) {
   
   deleteBtn.addEventListener('click', async () => {
     if (confirm(`Are you sure you want to delete "${filename}"?`)) {
-      await deleteFile(filename);
-      block.remove();
+      const success = await deleteFile(filename);
+      if (success) block.remove();
+
       
       // Show welcome message if no files left
       if (container.children.length === 0 || 
@@ -659,7 +664,9 @@ async function deleteFile(filename) {
 async function deleteFolder(folderPath) {
   const cleanFolderPath = folderPath.replace(/^\/+/, '');
   const searchPath = cleanFolderPath.endsWith('/') ? cleanFolderPath : cleanFolderPath + '/';
-  const filesInFolder = filesData.filter(f => f.startsWith(searchPath));
+  const filesInFolder = filesData.filter(f =>   
+    f.startsWith(searchPath) 
+  );
 
   if (filesInFolder.length === 0) {
     showNotification('Folder is empty. Nothing to delete.', 'info');
@@ -673,7 +680,7 @@ async function deleteFolder(folderPath) {
   for (const filePath of filesInFolder) {
     try {
       const fullPath = filePath.replace(/^\/+/, '');
-      const res = await fetch(`${API_BASE}/file/${fullPath}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/file/${encodeURIComponent(fullPath)}`, { method: 'DELETE' });
       if (res.ok) {
         deletedCount++;
         filesData = filesData.filter(f => f !== fullPath);
@@ -712,7 +719,10 @@ async function confirmRename() {
       const parentPath = parentPathParts.length > 0 ? parentPathParts.join('/') + '/' : '';
       const newFolderPath = parentPath + newFolderName + '/';
 
-      const filesInFolder = filesData.filter(f => f.startsWith(oldFolderPath + '/'));
+      const filesInFolder = filesData.filter(p =>
+        p.startsWith(oldFolderPath + '/')
+      );
+
       let renamedCount = 0;
 
       for (const oldFilePath of filesInFolder) {
@@ -732,7 +742,7 @@ async function confirmRename() {
         });
 
         if (createRes.ok) {
-          await fetch(`${API_BASE}/file/${oldFilePath}`, { method: 'DELETE' });
+          await fetch(`${API_BASE}/file/${encodeURIComponent(oldFilePath)}`, { method: 'DELETE' });
           renamedCount++;
         }
       }
@@ -752,7 +762,7 @@ async function confirmRename() {
     const folderPath = pathParts.length > 0 ? pathParts.join('/') + '/' : '';
     const newFilename = folderPath + newName.replace(/\s+/g, '_').toLowerCase() + '.txt';
 
-    const fetchRes = await fetch(`${API_BASE}/file/${filename}`);
+    const fetchRes = await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`);
     if (!fetchRes.ok) throw new Error('Failed to fetch file');
     const data = await fetchRes.json();
     const content = data.content || '';
@@ -764,9 +774,11 @@ async function confirmRename() {
     });
 
     if (!createRes.ok) throw new Error('Failed to create new file');
-    await fetch(`${API_BASE}/file/${filename}`, { method: 'DELETE' });
+    await fetch(`${API_BASE}/file/${encodeURIComponent(filename)}`, { method: 'DELETE' });
 
-    filesData = filesData.map(f => f === filename ? newFilename : f);
+    filesData = filesData.map(f =>   
+      f === filename ? newFilename : f 
+    );
 
     if (sidebarItem) {
       sidebarItem.dataset.filename = newFilename;
@@ -796,7 +808,15 @@ async function confirmRename() {
 
 // === Rename File ===
 function startRename(filename, sidebarItem, titleElement, isFolder = false) {
+  // FIX 9: clear search to avoid hidden DOM rename bugs
+  const searchInput = document.getElementById('searchFiles');
+  if (searchInput && searchInput.value) {
+    searchInput.value = '';
+    filterFiles();
+  }
+
   renameTarget = { filename, sidebarItem, titleElement, isFolder };
+
   const modal = document.getElementById('renameModal');
   const input = document.getElementById('renameInput');
   
