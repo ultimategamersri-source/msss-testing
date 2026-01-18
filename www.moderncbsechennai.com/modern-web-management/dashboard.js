@@ -49,10 +49,19 @@ async function checkPassword() {
   }
 }
 function normalizeFileName(fileName) {
-  let filename = fileName.replace(/\s+/g, '_').toLowerCase();
-  if (!filename.endsWith('.txt')) filename += '.txt';
+  let filename = fileName.trim().replace(/\s+/g, '_').toLowerCase();
+  
+  // Remove existing .txt if present
+  if (filename.toLowerCase().endsWith('.txt')) {
+    filename = filename.slice(0, -4);
+  }
+  
+  // Append .txt exactly once
+  filename += '.txt';
+  
   return filename;
 }
+
 
 function showPasswordError(msg) {
   const err = document.getElementById('passwordError');
