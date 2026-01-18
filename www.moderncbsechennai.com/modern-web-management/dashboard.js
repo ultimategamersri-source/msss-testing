@@ -579,99 +579,66 @@ async function deleteFolder(folderPath) {
 async function confirmRename() {
   const input = document.getElementById('renameInput');
   const newName = input.value.trim();
-  if (!newName || !renameTarget) return;
+  
+  if (!newName) {
+    alert('Please enter a file name');
+    return;
+  }
 
-  const { filename, sidebarItem, titleElement, isFolder } = renameTarget;
-
+  // ✅ Validation: must end with .txt
+  if (!newName.toLowerCase().endsWith('.txt')) {
+    alert('Filename must end with .txt');
+    return;
+  }
+  
+  if (!renameTarget) return;
+  
+  const { filename, sidebarItem, titleElement } = renameTarget;
+  
   try {
-    if (isFolder) {
-      // Folder rename: rename all files inside
-      const oldFolderPath = filename.endsWith('/') ? filename.slice(0, -1) : filename;
-      const newFolderName = newName.replace(/\s+/g, '_').toLowerCase();
-      const parentPathParts = oldFolderPath.split('/');
-      parentPathParts.pop(); // remove old folder name
-      const parentPath = parentPathParts.length > 0 ? parentPathParts.join('/') + '/' : '';
-      const newFolderPath = parentPath + newFolderName + '/';
-
-      const filesInFolder = filesData.filter(f => f.startsWith(oldFolderPath + '/'));
-      let renamedCount = 0;
-
-      for (const oldFilePath of filesInFolder) {
-        const relativePath = oldFilePath.replace(oldFolderPath + '/', '');
-        const newFilePath = newFolderPath + relativePath;
-
-        const res = await fetch(`${API_BASE}/file/${encodeURIComponent(oldFilePath)}`);
-        if (!res.ok) continue;
-        const data = await res.json();
-        const content = data.content || '';
-
-        // Create new file
-        const createRes = await fetch(`${API_BASE}/file/create`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: newFilePath, content })
-        });
-
-        if (createRes.ok) {
-          await fetch(`${API_BASE}/file/${oldFilePath}`, { method: 'DELETE' });
-          renamedCount++;
-        }
-      }
-
-      if (renamedCount > 0) showNotification(`Folder renamed successfully! ${renamedCount} file(s) moved.`, 'success');
-      else showNotification('Failed to rename folder. No files were moved.', 'error');
-
-      document.getElementById('renameModal').classList.add('hidden');
-      renameTarget = null;
-      await loadFiles();
-      return;
-    }
-
-    // File rename
-    const pathParts = filename.split('/');
-    pathParts.pop(); // remove old file name
-    const folderPath = pathParts.length > 0 ? pathParts.join('/') + '/' : '';
-    const newFilename = folderPath + newName.replace(/\s+/g, '_').toLowerCase() + '.txt';
-
-    const fetchRes = await fetch(`${API_BASE}/file/${filename}`);
-    if (!fetchRes.ok) throw new Error('Failed to fetch file');
-    const data = await fetchRes.json();
-    const content = data.content || '';
-
-    const createRes = await fetch(`${API_BASE}/file/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: newFilename, content })
+    // Rename via backend (copy then delete)
+    const res = await fetch(`${API_BASE}/file/rename`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ old: filename, new: newName }) // send exact names
     });
-
-    if (!createRes.ok) throw new Error('Failed to create new file');
-    await fetch(`${API_BASE}/file/${filename}`, { method: 'DELETE' });
-
-    filesData = filesData.map(f => f === filename ? newFilename : f);
-
+    
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Rename failed' }));
+      throw new Error(error.error || 'Rename failed');
+    }
+    
+    // Update local state
+    filesData = filesData.map(f => f === filename ? newName : f);
+    
+    // Update sidebar
     if (sidebarItem) {
-      sidebarItem.dataset.filename = newFilename;
-      const titleEl = sidebarItem.querySelector('.file-title');
-      if (titleEl) titleEl.textContent = prettifyFileName(newName);
+      sidebarItem.dataset.filename = newName;
+      sidebarItem.querySelector('.file-title').textContent = prettifyFileName(newName);
       sidebarItem.classList.remove('active');
     }
-    if (titleElement) titleElement.textContent = prettifyFileName(newName);
-
+    
+    // Update block
+    const block = document.querySelector(`[data-file-block="${filename}"]`);
+    if (block) {
+      block.dataset.fileBlock = newName;
+      block.querySelector('.file-block-title').textContent = prettifyFileName(newName);
+    }
+    
+    // Update open files map
     if (currentFiles[filename]) {
-      currentFiles[newFilename] = currentFiles[filename];
+      currentFiles[newName] = currentFiles[filename];
       delete currentFiles[filename];
     }
-
-    await loadFiles();
+    
+    renderFileList();
     showNotification(`File renamed to "${newName}"`, 'success');
+    
     document.getElementById('renameModal').classList.add('hidden');
     renameTarget = null;
-
   } catch (err) {
     console.error('Rename error:', err);
-    showNotification(`Failed to rename: ${err.message}`, 'error');
-    document.getElementById('renameModal').classList.add('hidden');
-    renameTarget = null;
+    showNotification(`Failed to rename file: ${err.message}`, 'error');
   }
 }
 
@@ -719,36 +686,31 @@ async function confirmCreateFile() {
     alert('Please enter a file name');
     return;
   }
+
+  // ✅ Validation: must end with .txt
+  if (!fileName.toLowerCase().endsWith('.txt')) {
+    alert('Filename must end with .txt');
+    return;
+  }
   
   try {
-    // Check if user wants to create in a folder (format: "folder/filename" or just "filename")
-    let filename, folderPath = '';
-    
-    if (fileName.includes('/')) {
-      const parts = fileName.split('/');
-      const filePart = parts.pop();
-      folderPath = parts.join('/') + '/';
-      filename = folderPath + filePart.replace(/\s+/g, '_').toLowerCase() + '.txt';
-    } else {
-      filename = fileName.replace(/\s+/g, '_').toLowerCase() + '.txt';
-    }
-    
     const res = await fetch(`${API_BASE}/file/create`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ title: filename, content: '' })
+      body: JSON.stringify({ filename: fileName, content: '' }) // use exact filename
     });
     
     if (!res.ok) {
-      const error = await res.json();
+      const error = await res.json().catch(() => ({ error: 'Create failed' }));
       throw new Error(error.error || 'Create failed');
     }
     
-    // Reload files to get updated tree structure
-    await loadFiles();
+    // Add to local state
+    filesData.unshift(fileName);
+    renderFileList();
     
     // Open the new file
-    await openFile(filename);
+    await openFile(fileName);
     
     showNotification(`File "${fileName}" created successfully!`, 'success');
     
