@@ -13,7 +13,7 @@ let expandedFolders = new Set(); // Track expanded folders
 async function checkPassword() {
   const pass = document.getElementById('dashboardPassword').value.trim();
   showPasswordError('');
-  
+
   if (!pass) {
     showPasswordError('Please enter a password');
     return;
@@ -25,14 +25,11 @@ async function checkPassword() {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ password: pass })
     });
-    
-    if (!res.ok) {
-      throw new Error(`HTTP error! status: ${res.status}`);
-    }
-    
+
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+
     const data = await res.json();
-    console.log('Auth response:', data);
-    
+
     if (data && data.success === true) {
       isAuthenticated = true;
       document.getElementById('passwordOverlay').style.display = 'none';
@@ -49,7 +46,6 @@ async function checkPassword() {
   }
 }
 
-
 function showPasswordError(msg) {
   const err = document.getElementById('passwordError');
   err.textContent = msg;
@@ -60,37 +56,25 @@ function showPasswordError(msg) {
 async function loadFiles() {
   const listEl = document.getElementById('fileList');
   listEl.innerHTML = '<div class="loading">Loading files...</div>';
-  
+
   try {
-    const res = await fetch(`${API_BASE}/files`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      mode: 'cors'
-    });
-    
+    const res = await fetch(`${API_BASE}/files`, { method: 'GET', headers: { 'Content-Type': 'application/json' }, mode: 'cors' });
+
     if (!res.ok) {
       const errorText = await res.text();
-      console.error('Response error:', errorText);
       throw new Error(`Failed to fetch files: ${res.status} ${res.statusText}`);
     }
-    
+
     const data = await res.json();
-    console.log('Files loaded:', data);
-    
-    // Handle both old flat format and new hierarchical format
+
     if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && 'type' in data[0]) {
-      // New hierarchical format
       fileTree = data;
-      filesData = flattenFileTree(data); // Keep flat list for backward compatibility
+      filesData = flattenFileTree(data);
     } else {
-      // Old flat format (backward compatibility)
       filesData = Array.isArray(data) ? data : (data.files || []);
-      // Convert flat list to tree structure
       fileTree = buildTreeFromFlatList(filesData);
     }
-    
+
     if (filesData.length === 0 && (!fileTree || fileTree.length === 0)) {
       listEl.innerHTML = '<div class="empty-state">No files found. Click "Add File" to create one.</div>';
     } else {
@@ -106,11 +90,8 @@ async function loadFiles() {
 function flattenFileTree(tree) {
   const result = [];
   for (const item of tree) {
-    if (item.type === 'file') {
-      result.push(item.path);
-    } else if (item.type === 'folder' && item.children) {
-      result.push(...flattenFileTree(item.children));
-    }
+    if (item.type === 'file') result.push(item.path);
+    else if (item.type === 'folder' && item.children) result.push(...flattenFileTree(item.children));
   }
   return result;
 }
@@ -122,16 +103,13 @@ function buildTreeFromFlatList(flatList) {
     let current = tree;
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
-      if (!current[part]) {
-        current[part] = { type: 'folder', children: {} };
-      }
+      if (!current[part]) current[part] = { type: 'folder', children: {} };
       current = current[part].children;
     }
     const filename = parts[parts.length - 1];
     current[filename] = { type: 'file', path: filepath };
   }
-  
-  // Convert to list format
+
   function convertToList(obj, prefix = '') {
     const result = [];
     for (const [name, item] of Object.entries(obj).sort()) {
@@ -143,16 +121,12 @@ function buildTreeFromFlatList(flatList) {
           children: convertToList(item.children, prefix + name + '/')
         });
       } else {
-        result.push({
-          name,
-          type: 'file',
-          path: item.path
-        });
+        result.push({ name, type: 'file', path: item.path });
       }
     }
     return result;
   }
-  
+
   return convertToList(tree);
 }
 
@@ -161,25 +135,16 @@ let fileItemIndex = 0;
 function renderFileList() {
   const list = document.getElementById('fileList');
   list.innerHTML = '';
-  fileItemIndex = 0; // Reset index for color rotation
-  
-  if (fileTree && fileTree.length > 0) {
-    renderTreeItems(fileTree, list, 0);
-  } else {
-    // Fallback to flat list if tree is empty
-    filesData.forEach((filename) => {
-      createFileItem(filename, list);
-    });
-  }
+  fileItemIndex = 0;
+
+  if (fileTree && fileTree.length > 0) renderTreeItems(fileTree, list, 0);
+  else filesData.forEach((filename) => createFileItem(filename, list));
 }
 
 function renderTreeItems(items, container, depth = 0) {
   items.forEach((item) => {
-    if (item.type === 'folder') {
-      createFolderItem(item, container, depth);
-    } else {
-      createFileItem(item.path, container, depth);
-    }
+    if (item.type === 'folder') createFolderItem(item, container, depth);
+    else createFileItem(item.path, container, depth);
   });
 }
 
@@ -188,54 +153,42 @@ function createFolderItem(folder, container, depth) {
   folderItem.className = 'folder-item';
   folderItem.style.paddingLeft = `${depth * 20 + 12}px`;
   folderItem.dataset.folderPath = folder.path;
-  
+
   const isExpanded = expandedFolders.has(folder.path);
-  
+
   const folderHeader = document.createElement('div');
   folderHeader.className = 'folder-header';
-  
+
   const toggleIcon = document.createElement('span');
   toggleIcon.className = 'folder-toggle';
   toggleIcon.textContent = isExpanded ? '📂' : '📁';
   toggleIcon.style.marginRight = '8px';
   toggleIcon.style.cursor = 'pointer';
-  
+
   const folderName = document.createElement('span');
   folderName.className = 'folder-name';
   folderName.textContent = folder.name;
-  
+
   folderHeader.appendChild(toggleIcon);
   folderHeader.appendChild(folderName);
   folderItem.appendChild(folderHeader);
-  
-  // Toggle expand/collapse
+
   folderHeader.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (isExpanded) {
-      expandedFolders.delete(folder.path);
-    } else {
-      expandedFolders.add(folder.path);
-    }
-    renderFileList(); // Re-render to update
+    if (isExpanded) expandedFolders.delete(folder.path);
+    else expandedFolders.add(folder.path);
+    renderFileList();
   });
-  
+
   // Long press to rename folder
   let pressTimer = null;
   folderHeader.addEventListener('mousedown', (e) => {
-    pressTimer = setTimeout(() => {
-      startRename(folder.path, null, folderName, true); // true indicates it's a folder
-    }, 800);
+    pressTimer = setTimeout(() => startRename(folder.path, null, folderName, true), 800);
   });
-  
-  folderHeader.addEventListener('mouseup', () => {
-    clearTimeout(pressTimer);
-  });
-  
-  folderHeader.addEventListener('mouseleave', () => {
-    clearTimeout(pressTimer);
-  });
-  
-  // Right click or long press for delete folder option
+  folderHeader.addEventListener('mouseup', () => clearTimeout(pressTimer));
+  folderHeader.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+
+  // Hover delete button
   const folderActions = document.createElement('div');
   folderActions.className = 'folder-actions';
   folderActions.style.display = 'none';
@@ -243,7 +196,7 @@ function createFolderItem(folder, container, depth) {
   folderActions.style.right = '10px';
   folderActions.style.top = '50%';
   folderActions.style.transform = 'translateY(-50%)';
-  
+
   const deleteFolderBtn = document.createElement('button');
   deleteFolderBtn.className = 'folder-delete-btn';
   deleteFolderBtn.innerHTML = '🗑️';
@@ -255,44 +208,22 @@ function createFolderItem(folder, container, depth) {
   deleteFolderBtn.style.cursor = 'pointer';
   deleteFolderBtn.style.color = 'white';
   deleteFolderBtn.style.fontSize = '14px';
-  
-  deleteFolderBtn.addEventListener('click', async (e) => {
+
+  deleteFolderBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    const folderPath = folder.path.endsWith('/') ? folder.path.slice(0, -1) : folder.path;
-    const filesInFolder = filesData.filter(f => f.startsWith(folderPath + '/'));
-    
-    if (filesInFolder.length === 0) {
-      if (confirm(`Are you sure you want to delete the empty folder "${folder.name}"?`)) {
-        await deleteFolder(folderPath);
-      }
-    } else {
-      if (confirm(`Are you sure you want to delete folder "${folder.name}" and all ${filesInFolder.length} file(s) inside it?`)) {
-        await deleteFolder(folderPath);
-      }
-    }
+    alert('Folder deletion is disabled to maintain object store integrity.');
   });
-  
+
   folderActions.appendChild(deleteFolderBtn);
   folderHeader.appendChild(folderActions);
-  
-  // Show delete button on hover
-  folderHeader.addEventListener('mouseenter', () => {
-    folderActions.style.display = 'block';
-  });
-  
-  folderHeader.addEventListener('mouseleave', () => {
-    folderActions.style.display = 'none';
-  });
-  
-  // Create children container
+  folderHeader.addEventListener('mouseenter', () => { folderActions.style.display = 'block'; });
+  folderHeader.addEventListener('mouseleave', () => { folderActions.style.display = 'none'; });
+
   const childrenContainer = document.createElement('div');
   childrenContainer.className = 'folder-children';
   childrenContainer.style.display = isExpanded ? 'block' : 'none';
-  
-  if (folder.children && folder.children.length > 0) {
-    renderTreeItems(folder.children, childrenContainer, depth + 1);
-  }
-  
+
+  if (folder.children && folder.children.length > 0) renderTreeItems(folder.children, childrenContainer, depth + 1);
   folderItem.appendChild(childrenContainer);
   container.appendChild(folderItem);
 }
@@ -302,67 +233,41 @@ function createFileItem(filepath, container, depth = 0) {
   item.className = 'file-item';
   item.dataset.filename = filepath;
   item.style.paddingLeft = `${depth * 20 + 12}px`;
-  
-  // Color rotation for beautiful file items
+
   const colorClass = `color-${fileItemIndex % 8}`;
   item.classList.add(colorClass);
   fileItemIndex++;
-  
-  // Check if file is currently open
-  if (currentFiles[filepath]) {
-    item.classList.add('active');
-  }
-  
+
+  if (currentFiles[filepath]) item.classList.add('active');
+
   const title = document.createElement('div');
   title.className = 'file-title';
   const filename = filepath.split('/').pop();
   title.textContent = prettifyFileName(filename);
-  
+
   item.appendChild(title);
-  
-  // Click to open file
+
   item.addEventListener('click', (e) => {
-    if (!e.target.closest('.file-item-actions')) {
-      openFile(filepath);
-    }
+    if (!e.target.closest('.file-item-actions')) openFile(filepath);
   });
-  
-  // Long press to rename
+
   let pressTimer = null;
   item.addEventListener('mousedown', (e) => {
-    pressTimer = setTimeout(() => {
-      startRename(filepath, item);
-    }, 800);
+    pressTimer = setTimeout(() => startRename(filepath, item), 800);
   });
-  
-  item.addEventListener('mouseup', () => {
-    clearTimeout(pressTimer);
-  });
-  
-  item.addEventListener('mouseleave', () => {
-    clearTimeout(pressTimer);
-  });
-  
-  // Hover effect
-  item.addEventListener('mouseenter', () => {
-    item.style.transform = 'translateX(8px) scale(1.02)';
-  });
-  
-  item.addEventListener('mouseleave', () => {
-    if (!currentFiles[filepath]) {
-      item.style.transform = 'translateX(0) scale(1)';
-    }
-  });
-  
+  item.addEventListener('mouseup', () => clearTimeout(pressTimer));
+  item.addEventListener('mouseleave', () => clearTimeout(pressTimer));
+
+  item.addEventListener('mouseenter', () => { item.style.transform = 'translateX(8px) scale(1.02)'; });
+  item.addEventListener('mouseleave', () => { if (!currentFiles[filepath]) item.style.transform = 'translateX(0) scale(1)'; });
+
   container.appendChild(item);
 }
 
 function prettifyFileName(filename) {
-  return filename
-    .replace(/\.txt$/i, '')
-    .replace(/[_-]/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return filename.replace(/\.txt$/i, '').replace(/[_-]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
+
 function expandParentFolders(el) {
   let parent = el.parentElement;
   while (parent) {
@@ -380,70 +285,46 @@ function expandParentFolders(el) {
 
 function filterFiles() {
   const query = document.getElementById('searchFiles').value.toLowerCase().trim();
-  
   if (!query) {
-    // If no query, show all items and restore normal state
     const items = document.querySelectorAll('.file-item, .folder-item, .folder-children');
-    items.forEach((item) => {
-      item.style.display = '';
-    });
+    items.forEach((item) => { item.style.display = ''; });
     return;
   }
-  
-  // Simple search - just show/hide items without re-rendering
+
   const items = document.querySelectorAll('.file-item, .folder-item');
   const foldersToExpand = new Set();
-  
+
   items.forEach((item) => {
     const filename = item.dataset.filename || item.dataset.folderPath || '';
-    const displayName = item.querySelector('.file-title')?.textContent || 
-                        item.querySelector('.folder-name')?.textContent || '';
-    
-    const matches = filename.toLowerCase().includes(query) || 
-                    displayName.toLowerCase().includes(query);
-    
+    const displayName = item.querySelector('.file-title')?.textContent || item.querySelector('.folder-name')?.textContent || '';
+
+    const matches = filename.toLowerCase().includes(query) || displayName.toLowerCase().includes(query);
+
     if (matches) {
       item.style.display = '';
-      
-      // If it's a folder and matches, expand it
       if (item.classList.contains('folder-item')) {
         const folderPath = item.dataset.folderPath;
-        if (folderPath) {
-          foldersToExpand.add(folderPath);
-          // Show children
-          const children = item.querySelector('.folder-children');
-          if (children) {
-            children.style.display = 'block';
-          }
-        }
+        if (folderPath) foldersToExpand.add(folderPath);
+        const children = item.querySelector('.folder-children');
+        if (children) children.style.display = 'block';
       }
-      
-      // Show all parent folders
       expandParentFolders(item);
-    } else {
-      // Hide item if it doesn't match
-      item.style.display = 'none';
-    }
+    } else item.style.display = 'none';
   });
-  
-  // Expand folders that need to be shown
+
   foldersToExpand.forEach(path => {
     expandedFolders.add(path);
-    // Escape special characters for querySelector
     const escapedPath = path.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&');
     const folderItem = document.querySelector(`[data-folder-path="${escapedPath}"]`);
     if (folderItem) {
       const children = folderItem.querySelector('.folder-children');
-      if (children) {
-        children.style.display = 'block';
-      }
+      if (children) children.style.display = 'block';
       const toggleIcon = folderItem.querySelector('.folder-toggle');
-      if (toggleIcon) {
-        toggleIcon.textContent = '📂';
-      }
+      if (toggleIcon) toggleIcon.textContent = '📂';
     }
   });
 }
+
 
 // === Open File ===
 async function openFile(filename) {
