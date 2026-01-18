@@ -214,47 +214,88 @@ def get_emotion_llm():
 # ======================
 # File operations with GCS fallback to local `data/` directory for dev
 # ======================
+def build_file_tree(file_paths):
+    """Build a hierarchical tree structure from flat file paths"""
+    tree = {}
+    
+    for file_path in file_paths:
+        parts = file_path.split('/')
+        current = tree
+        
+        # Navigate/create the folder structure
+        for i, part in enumerate(parts[:-1]):
+            if part not in current:
+                current[part] = {'type': 'folder', 'children': {}}
+            current = current[part]['children']
+        
+        # Add the file
+        filename = parts[-1]
+        if filename not in current:
+            current[filename] = {'type': 'file', 'path': file_path}
+    
+    return tree
+
+def tree_to_list(tree, prefix=""):
+    """Convert tree structure to flat list with paths"""
+    result = []
+    for name, item in sorted(tree.items()):
+        if item['type'] == 'folder':
+            result.append({
+                'name': name,
+                'type': 'folder',
+                'path': prefix + name + '/' if prefix else name + '/',
+                'children': tree_to_list(item['children'], prefix + name + '/')
+            })
+        else:
+            result.append({
+                'name': name,
+                'type': 'file',
+                'path': item['path']
+            })
+    return result
+
 @app.get("/files")
 def list_files():
     # Try GCS first, then fallback to local data/ folder
     try:
         bucket = storage_client.bucket(BUCKET_NAME)
         files = [b.name for b in bucket.list_blobs()]
-        return JSONResponse(files)
     except Exception as e:
         log.warning(f"⚠️ GCS list failed: {e}; falling back to local data/")
         files = []
         data_dir = "data"
         if os.path.isdir(data_dir):
-            for f in os.listdir(data_dir):
-                if f.endswith('.txt'):
-                    files.append(f)
-        return JSONResponse(files)
+            # Recursively get all files
+            for root, dirs, filenames in os.walk(data_dir):
+                for f in filenames:
+                    if f.endswith('.txt'):
+                        rel_path = os.path.relpath(os.path.join(root, f), data_dir)
+                        # Normalize path separators
+                        rel_path = rel_path.replace('\\', '/')
+                        files.append(rel_path)
+    
+    # Build hierarchical structure
+    tree = build_file_tree(files)
+    file_list = tree_to_list(tree)
+    
+    return JSONResponse(file_list)
 
+from urllib.parse import unquote
+from fastapi import HTTPException
 
-@app.get("/file/{filename}")
+@app.get("/file/{filename:path}")
 def read_file(filename: str):
-    # Try GCS blob, fallback to local file
-    try:
-        bucket = storage_client.bucket(BUCKET_NAME)
-        blob = bucket.blob(filename)
-        if blob.exists():
-            return JSONResponse({"filename": filename, "content": blob.download_as_text()})
-    except Exception as e:
-        log.debug(f"ℹ️ GCS read failed for {filename}: {e}")
+    # Proper decoding (safe even if already decoded)
+    filename = unquote(filename)
 
-    # Local fallback
-    local_path = os.path.join("data", filename)
-    if os.path.exists(local_path):
-        try:
-            with open(local_path, "r", encoding="utf-8") as f:
-                content = f.read()
-            return JSONResponse({"filename": filename, "content": content})
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=500)
+    bucket = storage_client.bucket(BUCKET_NAME)
+    blob = bucket.blob(filename)
 
-    return JSONResponse({"error": "File not found"}, status_code=404)
+    if not blob.exists():
+        raise HTTPException(status_code=404, detail="File not found")
 
+    content = blob.download_as_text()
+    return {"filename": filename, "content": content}
 
 @app.post("/file/create")
 async def create_file(request: Request):
@@ -263,7 +304,20 @@ async def create_file(request: Request):
     content = data.get("content", "")
     if not title:
         return JSONResponse({"error": "Title required"}, status_code=400)
-    filename = title.replace(" ", "_").lower() + ".txt"
+    
+    # Handle folder paths in title (e.g., "folder/subfolder/filename" or just "filename")
+    # Normalize title: remove any trailing .txt first
+    title = title.strip()
+    if title.lower().endswith('.txt'):
+        title = title[:-4]
+
+    # Now replace spaces and lowercase
+    filename = title.replace(" ", "_").lower()
+
+    # Always add .txt once
+    filename += ".txt"
+
+    
     # Try upload to GCS
     try:
         bucket = storage_client.bucket(BUCKET_NAME)
@@ -272,7 +326,14 @@ async def create_file(request: Request):
     except Exception as e:
         log.warning(f"⚠️ GCS create failed for {filename}: {e}; writing locally")
         os.makedirs("data", exist_ok=True)
-        local_path = os.path.join("data", filename)
+        
+        # Handle nested paths - create directories if needed
+        filename_normalized = filename.replace('/', os.sep).replace('\\', os.sep)
+        local_path = os.path.join("data", filename_normalized)
+        local_dir = os.path.dirname(local_path)
+        if local_dir and local_dir != "data":
+            os.makedirs(local_dir, exist_ok=True)
+        
         with open(local_path, "w", encoding="utf-8") as f:
             f.write(content)
         return JSONResponse({"status": "created-local", "file": filename})
@@ -285,6 +346,15 @@ async def update_file(request: Request):
     content = data.get("content", "")
     if not filename:
         return JSONResponse({"error": "Filename required"}, status_code=400)
+    
+    # Normalize filename path
+    filename = filename.strip()
+    if filename.lower().endswith('.txt'):
+        filename = filename[:-4]  # remove existing .txt
+
+    filename = filename.replace(" ", "_").lower() + ".txt"
+    filename = filename.replace('%2F', '/').replace('%5C', '/')
+    
     try:
         bucket = storage_client.bucket(BUCKET_NAME)
         blob = bucket.blob(filename)
@@ -302,7 +372,14 @@ async def update_file(request: Request):
     except Exception as e:
         log.warning(f"⚠️ GCS update failed for {filename}: {e}; writing locally")
         os.makedirs("data", exist_ok=True)
-        local_path = os.path.join("data", filename)
+        
+        # Handle nested paths - create directories if needed
+        filename_normalized = filename.replace('/', os.sep).replace('\\', os.sep)
+        local_path = os.path.join("data", filename_normalized)
+        local_dir = os.path.dirname(local_path)
+        if local_dir and local_dir != "data":
+            os.makedirs(local_dir, exist_ok=True)
+        
         with open(local_path, "w", encoding="utf-8") as f:
             f.write(content)
         
@@ -315,8 +392,18 @@ async def update_file(request: Request):
         return JSONResponse({"status": "updated-local", "file": filename})
 
 
-@app.delete("/file/{filename}")
+@app.delete("/file/{filename:path}")
 def delete_file(filename: str):
+    # Decode and normalize filename
+    # Strip spaces, remove any extra .txt, normalize
+    filename = filename.strip()
+    if filename.lower().endswith('.txt'):
+        filename = filename[:-4]  # remove existing .txt
+
+    filename = filename.replace(" ", "_").lower() + ".txt"
+    filename = filename.replace('%2F', '/').replace('%5C', '/')
+
+    
     # Try delete from GCS, fallback to local delete
     try:
         bucket = storage_client.bucket(BUCKET_NAME)
@@ -327,8 +414,16 @@ def delete_file(filename: str):
     except Exception as e:
         log.debug(f"ℹ️ GCS delete failed for {filename}: {e}")
 
-    local_path = os.path.join("data", filename)
-    if os.path.exists(local_path):
+    # Normalize path for local file system
+    filename_normalized = filename.replace('/', os.sep).replace('\\', os.sep)
+    local_path = os.path.join("data", filename_normalized)
+    
+    # Also try with forward slashes directly
+    if not os.path.exists(local_path):
+        local_path = os.path.join("data", filename.replace('\\', '/'))
+        local_path = os.path.normpath(local_path)
+    
+    if os.path.exists(local_path) and os.path.isfile(local_path):
         try:
             os.remove(local_path)
             return JSONResponse({"status": "deleted-local", "file": filename})
