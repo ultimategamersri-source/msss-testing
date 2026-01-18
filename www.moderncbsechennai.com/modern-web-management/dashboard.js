@@ -461,7 +461,7 @@ async function openFile(filename) {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/file/${fullPath}`, { method: 'GET' });
+    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(fullPath)}`, { method: 'GET' });
     if (!res.ok) throw new Error('File not found');
 
     const data = await res.json();
@@ -635,7 +635,7 @@ async function deleteFile(filename) {
   const fullPath = filename.replace(/^\/+/, ''); // remove leading slash
 
   try {
-    const res = await fetch(`${API_BASE}/file/${fullPath}`, { method: 'DELETE' });
+    const res = await fetch(`${API_BASE}/file/${encodeURIComponent(fullPath)}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Delete failed');
 
     // Update local state
@@ -719,7 +719,7 @@ async function confirmRename() {
         const relativePath = oldFilePath.replace(oldFolderPath + '/', '');
         const newFilePath = newFolderPath + relativePath;
 
-        const res = await fetch(`${API_BASE}/file/${oldFilePath}`);
+        const res = await fetch(`${API_BASE}/file/${encodeURIComponent(oldFilePath)}`);
         if (!res.ok) continue;
         const data = await res.json();
         const content = data.content || '';
