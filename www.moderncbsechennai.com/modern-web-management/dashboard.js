@@ -630,7 +630,7 @@ async function saveFile(filename, content) {
     const res = await fetch(`${API_BASE}/file/update`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ title: filename, content })
+      body: JSON.stringify({ filename: filename, content })
     });
     
     if (!res.ok) {
