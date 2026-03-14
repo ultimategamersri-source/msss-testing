@@ -547,7 +547,7 @@ function addFileBlock(filename, content) {
 
   const closeBtn = document.createElement('button');
   closeBtn.className = 'action-btn close-btn';
-  closeBtn.innerHTML = '❌ Close';
+  closeBtn.innerHTML = 'x';
   closeBtn.title = 'Close file';
   
   actions.appendChild(editBtn);
