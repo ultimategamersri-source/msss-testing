@@ -663,7 +663,13 @@ async function deleteFile(filename) {
 
     const item = document.querySelector(`[data-filename="${fullPath}"]`);
     if (item) item.classList.remove('active');
-
+    document
+      .querySelectorAll(`[data-file-block]`)
+      .forEach(block => {
+        if (block.dataset.fileBlock === filename || block.dataset.fileBlock === fullPath) {
+          block.remove();
+        }
+      });
     await loadFiles();
     showNotification(`File "${fullPath}" deleted successfully!`, 'success');
   } catch (err) {
