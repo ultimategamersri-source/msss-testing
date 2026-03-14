@@ -694,25 +694,20 @@ html, body {
 }
 
 .close-btn {
-  position: absolute;
-  top: 6px;
-  right: 8px;
+  font-size: medium;
+  font-weight: normal;
 
-  font-size: 18px;
-  font-weight: bold;
-
-  background: transparent;
+  background: rgb(203, 233, 191);
   border: none;
   cursor: pointer;
 
-  color: #aaa; /* default color */
+  color: #5e755e; /* default color */
   transition: color 0.2s ease;
 }
 
 .close-btn:hover {
   color: white;
-  background: rgba(255,255,255,0.1);
-  border-radius: 4px;
+  background: rgb(232, 17, 35);
 }
 
 /* ===== FILE CONTENT ===== */
