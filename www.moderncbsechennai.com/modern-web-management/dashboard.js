@@ -621,14 +621,7 @@ function addFileBlock(filename, content) {
       }
     }
   });
-  
-  container.appendChild(block);
-  block.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  
-  // Mark as open
-  currentFiles[filename] = true;
-}
-closeBtn.addEventListener('click', () => {
+  closeBtn.addEventListener('click', () => {
   block.remove();
 
   // remove from open files tracking
@@ -644,7 +637,14 @@ closeBtn.addEventListener('click', () => {
     const welcomeMsg = document.getElementById('welcomeMessage');
     if (welcomeMsg) welcomeMsg.style.display = 'flex';
   }
-});
+  });
+  container.appendChild(block);
+  block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  
+  // Mark as open
+  currentFiles[filename] = true;
+}
+
 // === Save File ===
 async function saveFile(filename, content) {
   try {
