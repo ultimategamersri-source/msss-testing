@@ -544,12 +544,17 @@ function addFileBlock(filename, content) {
   deleteBtn.className = 'action-btn delete-btn';
   deleteBtn.innerHTML = '🗑️ Delete';
   deleteBtn.title = 'Delete file';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'action-btn close-btn';
+  closeBtn.innerHTML = '❌ Close';
+  closeBtn.title = 'Close file';
   
   actions.appendChild(editBtn);
   actions.appendChild(saveBtn);
   actions.appendChild(renameBtn);
   actions.appendChild(deleteBtn);
-  
+  actions.appendChild(closeBtn);
   header.appendChild(title);
   header.appendChild(actions);
   
@@ -623,7 +628,23 @@ function addFileBlock(filename, content) {
   // Mark as open
   currentFiles[filename] = true;
 }
+closeBtn.addEventListener('click', () => {
+  block.remove();
 
+  // remove from open files tracking
+  delete currentFiles[filename];
+
+  // remove sidebar highlight
+  const item = document.querySelector(`[data-filename="${filename}"]`);
+  if (item) item.classList.remove('active');
+
+  // show welcome screen if nothing open
+  const container = document.getElementById('contentArea');
+  if (!container.querySelector('.file-block')) {
+    const welcomeMsg = document.getElementById('welcomeMessage');
+    if (welcomeMsg) welcomeMsg.style.display = 'flex';
+  }
+});
 // === Save File ===
 async function saveFile(filename, content) {
   try {
