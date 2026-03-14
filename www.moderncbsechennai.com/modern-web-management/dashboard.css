@@ -692,6 +692,13 @@ html, body {
   color: white;
 }
 
+.close-btn {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+  color: white;
+  font-size: 16px;
+  padding: 4px 8px;
+}
+
 /* ===== FILE CONTENT ===== */
 .file-block-content {
   position: relative;
