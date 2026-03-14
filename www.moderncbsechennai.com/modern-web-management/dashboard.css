@@ -636,6 +636,7 @@ html, body {
   margin-bottom: 20px;
   padding-bottom: 16px;
   border-bottom: 2px solid #f0f0f0;
+  position: relative;
 }
 
 .file-block-title {
@@ -693,10 +694,25 @@ html, body {
 }
 
 .close-btn {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+  position: absolute;
+  top: 6px;
+  right: 8px;
+
+  font-size: 18px;
+  font-weight: bold;
+
+  background: transparent;
+  border: none;
+  cursor: pointer;
+
+  color: #aaa; /* default color */
+  transition: color 0.2s ease;
+}
+
+.close-btn:hover {
   color: white;
-  font-size: 16px;
-  padding: 4px 8px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
 }
 
 /* ===== FILE CONTENT ===== */
