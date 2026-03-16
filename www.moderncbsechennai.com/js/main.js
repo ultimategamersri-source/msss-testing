@@ -5,16 +5,27 @@ const chatBox = document.querySelector("#chatBox");
 const inputField = document.querySelector("#userInput");
 let chatHistory = [];
 
-document.querySelector("#sendBtn").addEventListener("click", async () => {
-  const userMessage = inputField.value.trim();
-  if (!userMessage) return;
+document.addEventListener("DOMContentLoaded", () => {
+  const sendBtn = document.querySelector("#sendBtn");
+  const inputField = document.querySelector("#userInput");
+  const chatBox = document.querySelector("#chatBox");
 
-  chatBox.innerHTML += `<div class="user-msg">${userMessage}</div>`;
-  inputField.value = "";
+  if (!sendBtn || !inputField || !chatBox) {
+    console.warn("Chat elements missing!");
+    return;
+  }
 
-  const botReply = await sendMessage(userMessage, chatHistory);
-  chatBox.innerHTML += `<div class="bot-msg">${botReply}</div>`;
-  chatBox.scrollTop = chatBox.scrollHeight;
+  sendBtn.addEventListener("click", async () => {
+    const userMessage = inputField.value.trim();
+    if (!userMessage) return;
+
+    chatBox.innerHTML += `<div class="user-msg">${userMessage}</div>`;
+    inputField.value = "";
+
+    const botReply = await sendMessage(userMessage);
+    chatBox.innerHTML += `<div class="bot-msg">${botReply}</div>`;
+    chatBox.scrollTop = chatBox.scrollHeight;
+  });
 });
 
 // 1) Use Netlify proxy. Your _redirects already points /api/* to Cloud Run.
@@ -76,9 +87,9 @@ async function ask(question) {
 document.addEventListener("DOMContentLoaded", () => {
   ping(); // test immediately
 
-  const form = document.getElementById("#chatform");
-  const input = document.getElementById("#userinput");
-  const chatBox = document.getElementById("#chatbox");
+  const form = document.getElementById("chat-form");
+  const input = document.getElementById("user-input");
+  const chatBox = document.getElementById("chat-box");
 
   if (!form || !input || !chatBox) {
     console.warn("Chat elements not found in DOM.");
