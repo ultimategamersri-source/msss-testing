@@ -4,17 +4,21 @@ import { API } from "./config.js";
 let sessionId = null;
 const chatBox = document.querySelector("#chatBox");
 const inputField = document.querySelector("#userInput");
-let chatHistory = [];
+let chatHistory = JSON.parse(localStorage.getItem("chat_history")) || [];
 
 document.querySelector("#sendBtn").addEventListener("click", async () => {
   const userMessage = inputField.value.trim();
   if (!userMessage) return;
 
   chatBox.innerHTML += `<div class="user-msg">${userMessage}</div>`;
+  chatHistory.push({ type: "user", text: userMessage });
   inputField.value = "";
 
   const botReply = await sendMessage(userMessage);
   chatBox.innerHTML += `<div class="bot-msg">${botReply}</div>`;
+  chatHistory.push({ type: "bot", text: botReply });
+
+  localStorage.setItem("chat_history", JSON.stringify(chatHistory));
   chatBox.scrollTop = chatBox.scrollHeight;
 });
 
@@ -79,7 +83,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("chat-form");
   const input = document.getElementById("user-input");
   const chatBox = document.getElementById("chat-box");
-
+  chatHistory.forEach(msg => {
+    if (msg.type === "user") {
+      chatBox.innerHTML += `<div class="user-msg">${msg.text}</div>`;
+    } else {
+      chatBox.innerHTML += `<div class="bot-msg">${msg.text}</div>`;
+    }
+  });
   if (!form || !input || !chatBox) {
     console.warn("Chat elements not found in DOM.");
     showStatus("⚠️ Chat elements not found");
