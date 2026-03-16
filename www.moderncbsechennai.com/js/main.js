@@ -1,29 +1,8 @@
 // ========= MAIN.JS (Netlify -> Cloud Run) =========
 import { sendMessage } from "./config.js";
 import { API } from "./config.js";
-let sessionId = null;
-const chatBox = document.querySelector("#chatBox");
-const inputField = document.querySelector("#userInput");
+
 let chatHistory = JSON.parse(localStorage.getItem("chat_history")) || [];
-
-document.querySelector("#sendBtn").addEventListener("click", async () => {
-  const userMessage = inputField.value.trim();
-  if (!userMessage) return;
-
-  chatBox.innerHTML += `<div class="user-msg">${userMessage}</div>`;
-  chatHistory.push({ type: "user", text: userMessage });
-  inputField.value = "";
-
-  const botReply = await sendMessage(userMessage);
-  chatBox.innerHTML += `<div class="bot-msg">${botReply}</div>`;
-  chatHistory.push({ type: "bot", text: botReply });
-
-  localStorage.setItem("chat_history", JSON.stringify(chatHistory));
-  chatBox.scrollTop = chatBox.scrollHeight;
-});
-
-// 1) Use Netlify proxy. Your _redirects already points /api/* to Cloud Run.
-
 
 // --- Small status banner so you can see connectivity at a glance
 (function ensureStatusBanner() {
@@ -38,6 +17,7 @@ document.querySelector("#sendBtn").addEventListener("click", async () => {
     );
   }
 })();
+
 function showStatus(msg) {
   console.log(msg);
   const b = document.getElementById("status-banner");
@@ -58,31 +38,21 @@ async function ping() {
   }
 }
 
-// --- Ask endpoint
-async function ask(question) {
-  try {
-    const res = await fetch(`${API}/ask`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({question: question, session_id: sessionId});
-    if (!res.ok) throw new Error(`Ask failed: ${res.status}`);
-    const data = await res.json();
-    sessionId = data.session_id;
-    return data.answer;
-  } catch (err) {
-    console.error(err);
-    showStatus("⚠️ Assistant server error");
-    return "Sorry — I couldn’t reach the assistant. Please try again.";
-  }
-}
-
 // --- UI wiring
 document.addEventListener("DOMContentLoaded", () => {
-  ping(); // test immediately
+  ping();
 
-  const form = document.getElementById("chat-form");
-  const input = document.getElementById("user-input");
-  const chatBox = document.getElementById("chat-box");
+  const chatBox = document.querySelector("#chatBox");
+  const inputField = document.querySelector("#userInput");
+  const sendBtn = document.querySelector("#sendBtn");
+
+  if (!chatBox || !inputField || !sendBtn) {
+    console.warn("Chat elements not found in DOM.");
+    showStatus("⚠️ Chat elements not found");
+    return;
+  }
+
+  // Restore previous chat
   chatHistory.forEach(msg => {
     if (msg.type === "user") {
       chatBox.innerHTML += `<div class="user-msg">${msg.text}</div>`;
@@ -90,21 +60,26 @@ document.addEventListener("DOMContentLoaded", () => {
       chatBox.innerHTML += `<div class="bot-msg">${msg.text}</div>`;
     }
   });
-  if (!form || !input || !chatBox) {
-    console.warn("Chat elements not found in DOM.");
-    showStatus("⚠️ Chat elements not found");
-    return;
-  }
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const question = input.value.trim();
-    if (!question) return;
+  chatBox.scrollTop = chatBox.scrollHeight;
 
-    chatBox.innerHTML += `<div class="msg user">You: ${question}</div>`;
-    input.value = "";
-    const reply = await ask(question);
-    chatBox.innerHTML += `<div class="msg bot">Brightly: ${reply}</div>`;
+  // Send message
+  sendBtn.addEventListener("click", async () => {
+    const userMessage = inputField.value.trim();
+    if (!userMessage) return;
+
+    chatBox.innerHTML += `<div class="user-msg">${userMessage}</div>`;
+    chatHistory.push({ type: "user", text: userMessage });
+
+    inputField.value = "";
+
+    const botReply = await sendMessage(userMessage);
+
+    chatBox.innerHTML += `<div class="bot-msg">${botReply}</div>`;
+    chatHistory.push({ type: "bot", text: botReply });
+
+    localStorage.setItem("chat_history", JSON.stringify(chatHistory));
+
     chatBox.scrollTop = chatBox.scrollHeight;
   });
 });
