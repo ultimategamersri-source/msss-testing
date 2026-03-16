@@ -13,7 +13,7 @@ document.querySelector("#sendBtn").addEventListener("click", async () => {
   chatBox.innerHTML += `<div class="user-msg">${userMessage}</div>`;
   inputField.value = "";
 
-  const botReply = await sendMessage(userMessage, chatHistory);
+  const botReply = await sendMessage(userMessage);
   chatBox.innerHTML += `<div class="bot-msg">${botReply}</div>`;
   chatBox.scrollTop = chatBox.scrollHeight;
 });
