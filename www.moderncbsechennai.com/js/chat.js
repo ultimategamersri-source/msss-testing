@@ -1,20 +1,9 @@
 // js/chat.js
-import { sendMessage } from "./config.js";
-
 window.addEventListener("DOMContentLoaded", () => {
   // ---- Config / Base URL --------------------------------------------------
   // Prefer API from js/config.js; otherwise fall back to Netlify proxy (/api)
 const API = "https://msss-backend-961983851669.asia-south1.run.app";
 console.log("[chat.js] Using Cloud Run API:", API);
-
-
-  if (typeof API === "undefined") {
-    console.warn(
-      "[chat.js] API not found; using fallback:", API
-    );
-  } else {
-    console.log("[chat.js] Using API:", API);
-  }
 
   // ---- DOM refs -----------------------------------------------------------
   const chatBtn    = document.getElementById("chat-btn");
