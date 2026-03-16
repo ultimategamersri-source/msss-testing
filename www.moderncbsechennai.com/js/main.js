@@ -76,9 +76,9 @@ async function ask(question) {
 document.addEventListener("DOMContentLoaded", () => {
   ping(); // test immediately
 
-  const form = document.getElementById("chat-form");
-  const input = document.getElementById("user-input");
-  const chatBox = document.getElementById("chat-box");
+  const form = document.getElementById("#chatform");
+  const input = document.getElementById("#userinput");
+  const chatBox = document.getElementById("#chatbox");
 
   if (!form || !input || !chatBox) {
     console.warn("Chat elements not found in DOM.");
