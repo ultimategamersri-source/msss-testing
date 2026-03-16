@@ -32,10 +32,13 @@ console.log("[chat.js] Using Cloud Run API:", API);
   // ---- State --------------------------------------------------------------
   let waiting = false;
   let chatOpen = false;
-  const chatHistory = [{ type: "bot", text: "Hello! Ask me about school." }];
+  let chatHistory =
+    JSON.parse(localStorage.getItem("chat_history")) ||
+    [{ type: "bot", text: "Hello! Ask me about school." }];
 
   // ---- UI helpers ---------------------------------------------------------
   function renderMessages() {
+    localStorage.setItem("chat_history", JSON.stringify(chatHistory));
     chatBody.innerHTML = "";
     chatHistory.forEach((msg) => {
       const bubble = document.createElement("div");
