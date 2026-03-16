@@ -60,10 +60,10 @@ async function ask(question) {
     const res = await fetch(`${API}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question })
-    });
+      body: JSON.stringify({question: question, session_id: sessionId});
     if (!res.ok) throw new Error(`Ask failed: ${res.status}`);
     const data = await res.json();
+    sessionId = data.session_id;
     return data.answer;
   } catch (err) {
     console.error(err);
