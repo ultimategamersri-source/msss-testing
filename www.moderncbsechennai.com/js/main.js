@@ -1,7 +1,7 @@
 // ========= MAIN.JS (Netlify -> Cloud Run) =========
 import { sendMessage } from "./config.js";
 import { API } from "./config.js";
-
+let sessionId = null;
 const chatBox = document.querySelector("#chatBox");
 const inputField = document.querySelector("#userInput");
 let chatHistory = [];
