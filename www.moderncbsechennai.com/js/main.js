@@ -1,111 +1,96 @@
 // ========= MAIN.JS (Netlify -> Cloud Run) =========
-import { sendMessage } from "./config.js";
-
-const chatBox = document.querySelector("#chatBox");
-const inputField = document.querySelector("#userInput");
-let chatHistory = [];
+import { sendMessage, API } from "./config.js";
 
 document.addEventListener("DOMContentLoaded", () => {
-  const sendBtn = document.querySelector("#sendBtn");
-  const inputField = document.querySelector("#userInput");
-  const chatBox = document.querySelector("#chatBox");
+  const sendBtn = document.querySelector("#send-btn");
+  const inputField = document.querySelector("#user-input");
+  const chatBox = document.querySelector("#chat-body");
 
   if (!sendBtn || !inputField || !chatBox) {
     console.warn("Chat elements missing!");
     return;
   }
 
-  sendBtn.addEventListener("click", async () => {
-    const userMessage = inputField.value.trim();
-    if (!userMessage) return;
+  let sessionId = localStorage.getItem("chat_session") || null;
 
-    chatBox.innerHTML += `<div class="user-msg">${userMessage}</div>`;
+  async function sendMessageToBackend(message) {
+    try {
+      const res = await fetch(`${API}/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: message, session_id: sessionId }),
+      });
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+      if (data.session_id) {
+        sessionId = data.session_id;
+        localStorage.setItem("chat_session", sessionId);
+      }
+      return data.answer || "No response received.";
+    } catch (err) {
+      console.error("Error contacting chatbot API:", err);
+      return "⚠️ Could not reach assistant.";
+    }
+  }
+
+  function appendMessage(msg, sender) {
+    const div = document.createElement("div");
+    div.className = `message ${sender}`;
+    div.innerHTML = msg;
+    chatBox.appendChild(div);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  sendBtn.addEventListener("click", async () => {
+    const message = inputField.value.trim();
+    if (!message) return;
+
+    appendMessage(message, "user");
     inputField.value = "";
 
-    const botReply = await sendMessage(userMessage);
-    chatBox.innerHTML += `<div class="bot-msg">${botReply}</div>`;
-    chatBox.scrollTop = chatBox.scrollHeight;
+    const reply = await sendMessageToBackend(message);
+    appendMessage(reply, "bot");
   });
-});
 
-// 1) Use Netlify proxy. Your _redirects already points /api/* to Cloud Run.
-const API = "https://msss-backend-961983851669.asia-south1.run.app";
+  // Optional: press Enter to send
+  inputField.addEventListener("keypress", async (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendBtn.click();
+    }
+  });
 
-
-// --- Small status banner so you can see connectivity at a glance
-(function ensureStatusBanner() {
-  if (!document.getElementById("status-banner")) {
-    const el = document.createElement("div");
-    el.id = "status-banner";
-    el.style.cssText =
-      "position:fixed;bottom:8px;left:8px;padding:6px 10px;font:12px/1.4 system-ui;background:#111;color:#fff;border-radius:6px;z-index:99999;opacity:.9";
-    el.textContent = "main.js loaded…";
-    document.addEventListener("DOMContentLoaded", () =>
-      document.body.appendChild(el)
-    );
+  // --- Health check
+  async function ping() {
+    try {
+      const res = await fetch(`${API}/health`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`Health ${res.status}`);
+      const data = await res.json();
+      console.log("✅ Backend Health:", data);
+      showStatus("✅ Backend OK");
+    } catch (err) {
+      console.error("❌ Backend not reachable:", err);
+      showStatus("⚠️ Server not reachable.");
+    }
   }
-})();
-function showStatus(msg) {
-  console.log(msg);
-  const b = document.getElementById("status-banner");
-  if (b) b.textContent = msg;
-}
 
-// --- Health check
-async function ping() {
-  try {
-    const res = await fetch(`${API}/health`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`Health ${res.status}`);
-    const data = await res.json();
-    console.log("✅ Backend Health:", data);
-    showStatus("✅ Backend OK");
-  } catch (err) {
-    console.error("❌ Backend not reachable:", err);
-    showStatus("⚠️ Server not reachable.");
-  }
-}
-
-// --- Ask endpoint
-async function ask(question) {
-  try {
-    const res = await fetch(`${API}/ask`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question })
-    });
-    if (!res.ok) throw new Error(`Ask failed: ${res.status}`);
-    const data = await res.json();
-    return data.answer;
-  } catch (err) {
-    console.error(err);
-    showStatus("⚠️ Assistant server error");
-    return "Sorry — I couldn’t reach the assistant. Please try again.";
-  }
-}
-
-// --- UI wiring
-document.addEventListener("DOMContentLoaded", () => {
   ping(); // test immediately
 
-  const form = document.getElementById("chat-form");
-  const input = document.getElementById("user-input");
-  const chatBox = document.getElementById("chat-box");
+  // --- Small status banner
+  (function ensureStatusBanner() {
+    if (!document.getElementById("status-banner")) {
+      const el = document.createElement("div");
+      el.id = "status-banner";
+      el.style.cssText =
+        "position:fixed;bottom:8px;left:8px;padding:6px 10px;font:12px/1.4 system-ui;background:#111;color:#fff;border-radius:6px;z-index:99999;opacity:.9";
+      el.textContent = "main.js loaded…";
+      document.body.appendChild(el);
+    }
+  })();
 
-  if (!form || !input || !chatBox) {
-    console.warn("Chat elements not found in DOM.");
-    showStatus("⚠️ Chat elements not found");
-    return;
+  function showStatus(msg) {
+    console.log(msg);
+    const b = document.getElementById("status-banner");
+    if (b) b.textContent = msg;
   }
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const question = input.value.trim();
-    if (!question) return;
-
-    chatBox.innerHTML += `<div class="msg user">You: ${question}</div>`;
-    input.value = "";
-    const reply = await ask(question);
-    chatBox.innerHTML += `<div class="msg bot">Brightly: ${reply}</div>`;
-    chatBox.scrollTop = chatBox.scrollHeight;
-  });
 });
