@@ -11,6 +11,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const userInput  = document.getElementById("user-input");
   const chatBody   = document.getElementById("chat-body");
   const header     = document.getElementById("chat-header");
+  const clearBtn   = document.getElementById("clear-btn");
 
   if (!chatBtn || !chatWindow || !sendBtn || !userInput || !chatBody || !header) {
     console.error("[chat.js] Missing DOM elements.");
@@ -24,13 +25,14 @@ window.addEventListener("DOMContentLoaded", () => {
   // ---- State --------------------------------------------------------------
   let waiting  = false;
   let chatOpen = false;
-  const chatHistory = [{ type: "bot", text: "Hello! Ask me about school. 😊", time: getTime() }];
+  const WELCOME = "Hello! Ask me about school. 😊";
+  const chatHistory = [{ type: "bot", text: WELCOME, time: getTime() }];
 
   // ---- Time helper --------------------------------------------------------
   function getTime() {
-    const now = new Date();
-    let h   = now.getHours();
-    const m = String(now.getMinutes()).padStart(2, "0");
+    const now  = new Date();
+    let h      = now.getHours();
+    const m    = String(now.getMinutes()).padStart(2, "0");
     const ampm = h >= 12 ? "PM" : "AM";
     h = h % 12 || 12;
     return `${h}:${m} ${ampm}`;
@@ -51,7 +53,7 @@ window.addEventListener("DOMContentLoaded", () => {
       return line + "<br>";
     }).join("");
 
-    html = html.replace(/(<li>.*?<\/li>)(?:\s*(<li>.*?<\/li>))*/gs, match => `<ul>${match}</ul>`);
+    html = html.replace(/(<li>.*?<\/li>)(?:\s*(<li>.*?<\/li>))*/gs, m => `<ul>${m}</ul>`);
     html = html.replace(/(<br>){3,}/g, "<br><br>");
     return html;
   }
@@ -59,7 +61,7 @@ window.addEventListener("DOMContentLoaded", () => {
   // ---- Render messages ----------------------------------------------------
   function renderMessages() {
     chatBody.innerHTML = "";
-    chatHistory.forEach((msg) => {
+    chatHistory.forEach((msg, idx) => {
       const wrapper = document.createElement("div");
       wrapper.className = `message-wrapper ${msg.type}`;
 
@@ -67,14 +69,12 @@ window.addEventListener("DOMContentLoaded", () => {
       bubble.className = `message ${msg.type}`;
 
       if (msg.type === "bot") {
-        // Icon
         const icon = document.createElement("span");
         icon.className = "icon";
         icon.textContent = "💡";
         bubble.appendChild(icon);
 
         if (msg.typing) {
-          // Bouncing dots typing indicator
           bubble.innerHTML += `
             <div class="typing-indicator">
               <span>Thinking...</span>
@@ -96,12 +96,26 @@ window.addEventListener("DOMContentLoaded", () => {
 
       wrapper.appendChild(bubble);
 
-      // Timestamp — shown below bubble, not inside it
+      // Timestamp
       if (msg.time && !msg.typing) {
         const ts = document.createElement("div");
         ts.className = "msg-time";
         ts.textContent = msg.time;
         wrapper.appendChild(ts);
+      }
+
+      // Copy button for bot messages (not typing, not welcome)
+      if (msg.type === "bot" && !msg.typing && idx > 0) {
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "copy-btn";
+        copyBtn.textContent = "📋 Copy";
+        copyBtn.addEventListener("click", () => {
+          navigator.clipboard.writeText(msg.text).then(() => {
+            copyBtn.textContent = "✅ Copied!";
+            setTimeout(() => copyBtn.textContent = "📋 Copy", 2000);
+          });
+        });
+        wrapper.appendChild(copyBtn);
       }
 
       chatBody.appendChild(wrapper);
@@ -114,9 +128,43 @@ window.addEventListener("DOMContentLoaded", () => {
     userInput.style.height = Math.min(userInput.scrollHeight, 120) + "px";
   }
 
+  // ---- Open / Close -------------------------------------------------------
+  function openChat() {
+    chatOpen = true;
+    chatWindow.classList.remove("hidden");
+    autoResizeTextarea();
+    userInput.focus();
+  }
+
+  function closeChat() {
+    chatOpen = false;
+    chatWindow.classList.add("hidden");
+  }
+
+  // Open on first visit automatically
+  const hasVisited = localStorage.getItem("brightly_visited");
+  if (!hasVisited) {
+    localStorage.setItem("brightly_visited", "1");
+    openChat();
+  } else {
+    closeChat();
+  }
+
+  chatBtn.addEventListener("click", () => {
+    chatOpen ? closeChat() : openChat();
+  });
+
+  // ---- Clear chat ---------------------------------------------------------
+  clearBtn.addEventListener("click", () => {
+    chatHistory.length = 0;
+    chatHistory.push({ type: "bot", text: WELCOME, time: getTime() });
+    renderMessages();
+  });
+
   // ---- Draggable ----------------------------------------------------------
   let isDragging = false, offsetX = 0, offsetY = 0;
   header.addEventListener("mousedown", (e) => {
+    if (e.target === clearBtn) return; // don't drag when clicking clear
     isDragging = true;
     offsetX = e.clientX - chatWindow.offsetLeft;
     offsetY = e.clientY - chatWindow.offsetTop;
@@ -131,16 +179,6 @@ window.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("mouseup", () => {
     isDragging = false;
     header.style.cursor = "grab";
-  });
-
-  // ---- Toggle open/close --------------------------------------------------
-  chatBtn.addEventListener("click", () => {
-    chatOpen = !chatOpen;
-    chatWindow.style.display = chatOpen ? "flex" : "none";
-    if (chatOpen) {
-      autoResizeTextarea();
-      userInput.focus();
-    }
   });
 
   // ---- Session end --------------------------------------------------------
@@ -196,7 +234,6 @@ window.addEventListener("DOMContentLoaded", () => {
     userInput.value = "";
     autoResizeTextarea();
 
-    // Typing indicator — special flag
     chatHistory.push({ type: "bot", text: "", time: null, typing: true });
     renderMessages();
     waiting = true;
@@ -204,7 +241,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
     try {
       const answer = await postToAsk(text);
-      chatHistory.pop(); // remove typing indicator
+      chatHistory.pop();
       chatHistory.push({ type: "bot", text: answer, time: getTime() });
       renderMessages();
     } catch (e) {
