@@ -6,23 +6,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MSSS</title>
 
-  <!-- CSS -->
   <link rel="stylesheet" href="dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="dist/css/bootstrap-theme.min.css">
   <link rel="stylesheet" href="css/style.css">
 
-  <!-- ✅ Load API config first -->
   <script type="module" src="js/config.js"></script>
-
-
-  <!-- ✅ Load jQuery before Bootstrap -->
   <script src="js/jquery.js" type="text/javascript"></script>
   <script src="dist/js/bootstrap.min.js"></script>
-
-  <!-- ✅ Load your chatbot script last (it waits for DOMContentLoaded) -->
   <script type="module" src="js/chat.js"></script>
 
-  <!-- Chat UI styles -->
   <style>
     /* === Floating Chat Button === */
     #chat-btn {
@@ -56,8 +48,6 @@
       border-radius: 30px;
       box-shadow: 0 8px 25px rgba(0,0,0,0.25);
       flex-direction: column;
-      border: 3px solid transparent;
-      animation: moveGradient 15s linear infinite;
       z-index: 9999;
       display: flex;
     }
@@ -78,8 +68,8 @@
     }
 
     @keyframes moveGradient {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
       100% { background-position: 0% 50%; }
     }
 
@@ -90,13 +80,32 @@
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 4px;
       background: #fff;
     }
 
+    /* === Message Wrapper (bubble + timestamp) === */
+    .message-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      max-width: 85%;
+    }
+    .message-wrapper.user { align-self: flex-end; align-items: flex-end; }
+    .message-wrapper.bot  { align-self: flex-start; align-items: flex-start; }
+
+    /* === Timestamp === */
+    .msg-time {
+      font-size: 0.7em;
+      color: #aaa;
+      padding: 0 6px;
+      font-family: "Comic Sans MS", sans-serif;
+    }
+    .message-wrapper.user .msg-time { text-align: right; }
+    .message-wrapper.bot  .msg-time { text-align: left; }
+
     /* === Message Bubbles === */
     .message {
-      max-width: 80%;
       padding: 10px 14px;
       border-radius: 25px;
       word-wrap: break-word;
@@ -105,17 +114,17 @@
       display: flex;
       flex-direction: column;
       gap: 4px;
+      font-size: 0.9em;
+      line-height: 1.5;
     }
 
     .user {
-      align-self: flex-end;
       background: linear-gradient(135deg, #42e695, #3bb2b8);
       color: #fff;
       border-bottom-right-radius: 5px;
     }
 
     .bot {
-      align-self: flex-start;
       background: linear-gradient(135deg, #7873f5, #a98df5);
       color: white;
       border-bottom-left-radius: 5px;
@@ -125,8 +134,49 @@
 
     .bot .icon {
       position: absolute;
-      top: 6px;
+      top: 8px;
       left: 8px;
+    }
+
+    /* === Bot message content === */
+    .bot-content { color: white; font-family: "Comic Sans MS", sans-serif; }
+    .bot-content strong { color: #ffed4f; font-weight: bold; }
+    .bot-content ul { margin: 4px 0; padding-left: 16px; list-style: none; }
+    .bot-content ul li { padding: 2px 0; position: relative; }
+    .bot-content ul li::before { content: "•"; color: #ffed4f; font-weight: bold; margin-right: 6px; }
+    .bot-content br { display: block; margin: 1px 0; }
+
+    /* === Typing indicator === */
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #ffffffcc;
+      font-family: "Comic Sans MS", sans-serif;
+      font-size: 0.9em;
+    }
+
+    .dots {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      background: #ffed4f;
+      border-radius: 50%;
+      animation: bounce 1.2s infinite ease-in-out;
+    }
+
+    .dot:nth-child(1) { animation-delay: 0s; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30%            { transform: translateY(-6px); }
     }
 
     /* === Input Area === */
