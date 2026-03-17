@@ -24,22 +24,87 @@ window.addEventListener("DOMContentLoaded", () => {
   // ---- State --------------------------------------------------------------
   let waiting  = false;
   let chatOpen = false;
-  const chatHistory = [{ type: "bot", text: "Hello! Ask me about school." }];
+  const chatHistory = [{ type: "bot", text: "Hello! Ask me about school. 😊", time: getTime() }];
 
-  // ---- UI helpers ---------------------------------------------------------
+  // ---- Time helper --------------------------------------------------------
+  function getTime() {
+    const now = new Date();
+    let h   = now.getHours();
+    const m = String(now.getMinutes()).padStart(2, "0");
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${h}:${m} ${ampm}`;
+  }
+
+  // ---- Markdown renderer --------------------------------------------------
+  function parseMarkdown(text) {
+    let html = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/^[•\-]\s+(.+)$/gm, "<li>$1</li>");
+
+    html = html.split("\n").map(line => {
+      if (line.startsWith("<li>")) return line;
+      if (line.trim() === "") return "<br>";
+      return line + "<br>";
+    }).join("");
+
+    html = html.replace(/(<li>.*?<\/li>)(?:\s*(<li>.*?<\/li>))*/gs, match => `<ul>${match}</ul>`);
+    html = html.replace(/(<br>){3,}/g, "<br><br>");
+    return html;
+  }
+
+  // ---- Render messages ----------------------------------------------------
   function renderMessages() {
     chatBody.innerHTML = "";
     chatHistory.forEach((msg) => {
+      const wrapper = document.createElement("div");
+      wrapper.className = `message-wrapper ${msg.type}`;
+
       const bubble = document.createElement("div");
       bubble.className = `message ${msg.type}`;
+
       if (msg.type === "bot") {
+        // Icon
         const icon = document.createElement("span");
         icon.className = "icon";
         icon.textContent = "💡";
         bubble.appendChild(icon);
+
+        if (msg.typing) {
+          // Bouncing dots typing indicator
+          bubble.innerHTML += `
+            <div class="typing-indicator">
+              <span>Thinking...</span>
+              <div class="dots">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+              </div>
+            </div>`;
+        } else {
+          const content = document.createElement("div");
+          content.className = "bot-content";
+          content.innerHTML = parseMarkdown(msg.text);
+          bubble.appendChild(content);
+        }
+      } else {
+        bubble.appendChild(document.createTextNode(msg.text));
       }
-      bubble.appendChild(document.createTextNode(msg.text));
-      chatBody.appendChild(bubble);
+
+      wrapper.appendChild(bubble);
+
+      // Timestamp — shown below bubble, not inside it
+      if (msg.time && !msg.typing) {
+        const ts = document.createElement("div");
+        ts.className = "msg-time";
+        ts.textContent = msg.time;
+        wrapper.appendChild(ts);
+      }
+
+      chatBody.appendChild(wrapper);
     });
     chatBody.scrollTop = chatBody.scrollHeight;
   }
@@ -78,17 +143,15 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ---- Session end — fires when user closes tab/browser -------------------
+  // ---- Session end --------------------------------------------------------
   function sendSessionEnd() {
     if (!sessionId) return;
-    // Use sendBeacon so it works even during page unload
     const payload = JSON.stringify({ session_id: sessionId });
     navigator.sendBeacon(`${API}/session/end`, new Blob([payload], { type: "application/json" }));
     console.log("[chat.js] Session end signal sent:", sessionId);
     localStorage.removeItem("chat_session");
     sessionId = null;
   }
-
   window.addEventListener("beforeunload", sendSessionEnd);
 
   // ---- API call -----------------------------------------------------------
@@ -114,8 +177,6 @@ window.addEventListener("DOMContentLoaded", () => {
       localStorage.setItem("chat_session", sessionId);
       console.log("[chat.js] Session saved:", sessionId);
     }
-
-    // If session was ended (farewell), clear local session
     if (data.session_id === null) {
       localStorage.removeItem("chat_session");
       sessionId = null;
@@ -130,25 +191,26 @@ window.addEventListener("DOMContentLoaded", () => {
     const text = (userInput.value || "").trim();
     if (!text) return;
 
-    chatHistory.push({ type: "user", text });
+    chatHistory.push({ type: "user", text, time: getTime() });
     renderMessages();
     userInput.value = "";
     autoResizeTextarea();
 
-    chatHistory.push({ type: "bot", text: "💭 Thinking..." });
+    // Typing indicator — special flag
+    chatHistory.push({ type: "bot", text: "", time: null, typing: true });
     renderMessages();
     waiting = true;
     sendBtn.disabled = true;
 
     try {
       const answer = await postToAsk(text);
-      chatHistory.pop();
-      chatHistory.push({ type: "bot", text: answer });
+      chatHistory.pop(); // remove typing indicator
+      chatHistory.push({ type: "bot", text: answer, time: getTime() });
       renderMessages();
     } catch (e) {
       console.error("[chat.js] Error:", e);
       chatHistory.pop();
-      chatHistory.push({ type: "bot", text: "⚠️ Having trouble reaching the server. Please try again." });
+      chatHistory.push({ type: "bot", text: "⚠️ Having trouble reaching the server. Please try again.", time: getTime() });
       renderMessages();
     } finally {
       waiting = false;
