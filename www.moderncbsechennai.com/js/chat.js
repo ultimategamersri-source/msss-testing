@@ -84,7 +84,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // ---- API call (THE FIXED PART) ------------------------------------------
   async function postToAsk(question) {
-    const body = { question: text, session_id: sessionId };
+    const body = { question: question, session_id: sessionId };
     console.log("[chat.js] Sending to /ask:", body);
 
     const url = `${API}/ask`;
