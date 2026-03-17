@@ -37,7 +37,6 @@
 
     /* === Chat Window === */
     #chat-window {
-      display: none;
       position: fixed;
       bottom: 100px;
       right: 20px;
@@ -50,6 +49,13 @@
       flex-direction: column;
       z-index: 9999;
       display: flex;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
+    #chat-window.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(20px);
     }
 
     /* === Chat Header === */
@@ -58,14 +64,37 @@
       background-size: 1000% 1000%;
       animation: moveGradient 10s linear infinite;
       color: #fff;
-      padding: 14px;
-      text-align: center;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       font-family: "Comic Sans MS", sans-serif;
       border-top-left-radius: 30px;
       border-top-right-radius: 30px;
       font-size: large;
       cursor: grab;
     }
+
+    #chat-header .header-title { color: #ffed4f; font-weight: bold; }
+
+    /* Clear chat button in header */
+    #clear-btn {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+    #clear-btn:hover { background: rgba(255,255,255,0.4); }
+    #clear-btn title { display: none; }
 
     @keyframes moveGradient {
       0%   { background-position: 0% 50%; }
@@ -84,7 +113,7 @@
       background: #fff;
     }
 
-    /* === Message Wrapper (bubble + timestamp) === */
+    /* === Message Wrapper === */
     .message-wrapper {
       display: flex;
       flex-direction: column;
@@ -96,18 +125,18 @@
 
     /* === Timestamp === */
     .msg-time {
-      font-size: 0.7em;
-      color: #aaa;
-      padding: 0 6px;
+      font-size: 0.68em;
+      color: #3bb2b8;
+      padding: 0 8px;
       font-family: "Comic Sans MS", sans-serif;
     }
     .message-wrapper.user .msg-time { text-align: right; }
     .message-wrapper.bot  .msg-time { text-align: left; }
 
-    /* === Message Bubbles === */
+    /* === Message Bubbles — pill shape === */
     .message {
-      padding: 10px 14px;
-      border-radius: 25px;
+      padding: 10px 16px;
+      border-radius: 22px;
       word-wrap: break-word;
       font-family: "Comic Sans MS", sans-serif;
       box-shadow: 0 2px 5px rgba(0,0,0,0.1);
@@ -122,12 +151,18 @@
       background: linear-gradient(135deg, #42e695, #3bb2b8);
       color: #fff;
       border-bottom-right-radius: 5px;
+      border-top-right-radius: 22px;
+      border-top-left-radius: 22px;
+      border-bottom-left-radius: 22px;
     }
 
     .bot {
       background: linear-gradient(135deg, #7873f5, #a98df5);
       color: white;
       border-bottom-left-radius: 5px;
+      border-top-right-radius: 22px;
+      border-top-left-radius: 22px;
+      border-bottom-right-radius: 22px;
       position: relative;
       padding-left: 28px;
     }
@@ -138,13 +173,30 @@
       left: 8px;
     }
 
-    /* === Bot message content === */
+    /* === Bot content formatting === */
     .bot-content { color: white; font-family: "Comic Sans MS", sans-serif; }
     .bot-content strong { color: #ffed4f; font-weight: bold; }
     .bot-content ul { margin: 4px 0; padding-left: 16px; list-style: none; }
-    .bot-content ul li { padding: 2px 0; position: relative; }
+    .bot-content ul li { padding: 2px 0; }
     .bot-content ul li::before { content: "•"; color: #ffed4f; font-weight: bold; margin-right: 6px; }
     .bot-content br { display: block; margin: 1px 0; }
+
+    /* === Copy button on bot messages === */
+    .copy-btn {
+      align-self: flex-start;
+      margin-top: 2px;
+      margin-left: 6px;
+      background: none;
+      border: none;
+      color: #3bb2b8;
+      font-size: 0.72em;
+      cursor: pointer;
+      padding: 0;
+      font-family: "Comic Sans MS", sans-serif;
+      opacity: 0.8;
+      transition: opacity 0.2s;
+    }
+    .copy-btn:hover { opacity: 1; }
 
     /* === Typing indicator === */
     .typing-indicator {
@@ -155,13 +207,7 @@
       font-family: "Comic Sans MS", sans-serif;
       font-size: 0.9em;
     }
-
-    .dots {
-      display: flex;
-      gap: 4px;
-      align-items: center;
-    }
-
+    .dots { display: flex; gap: 4px; align-items: center; }
     .dot {
       width: 7px;
       height: 7px;
@@ -169,7 +215,6 @@
       border-radius: 50%;
       animation: bounce 1.2s infinite ease-in-out;
     }
-
     .dot:nth-child(1) { animation-delay: 0s; }
     .dot:nth-child(2) { animation-delay: 0.2s; }
     .dot:nth-child(3) { animation-delay: 0.4s; }
@@ -202,7 +247,6 @@
       outline: none;
       transition: all 0.2s;
     }
-
     #user-input:focus { border-color: #7873f5; }
 
     #send-btn {
@@ -216,8 +260,25 @@
       font-weight: bold;
       transition: 0.2s;
     }
-
     #send-btn:hover { transform: scale(1.1); }
+
+    /* === Mobile responsive === */
+    @media (max-width: 480px) {
+      #chat-window {
+        width: calc(100vw - 20px);
+        right: 10px;
+        bottom: 90px;
+        max-height: 70vh;
+        border-radius: 20px;
+      }
+      #chat-btn {
+        width: 55px;
+        height: 55px;
+        font-size: 24px;
+        bottom: 15px;
+        right: 15px;
+      }
+    }
   </style>
 </head>
 
@@ -225,7 +286,10 @@
   <button id="chat-btn">💬</button>
 
   <div id="chat-window">
-    <div id="chat-header" style="color:#ffed4f; font-weight:bold;">Brightly (School Assistant)</div>
+    <div id="chat-header">
+      <span class="header-title">Brightly (School Assistant)</span>
+      <button id="clear-btn" title="Clear chat">🗑️</button>
+    </div>
     <div id="chat-body"></div>
     <div id="chat-input">
       <textarea id="user-input" placeholder="Ask something..."></textarea>
