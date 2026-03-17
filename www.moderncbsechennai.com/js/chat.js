@@ -1,12 +1,10 @@
 // js/chat.js
-// NOTE: We import API from config.js so the URL is defined in one place only.
 import { API } from "./config.js";
 
 window.addEventListener("DOMContentLoaded", () => {
 
   console.log("[chat.js] Using API:", API);
 
-  // ---- DOM refs -----------------------------------------------------------
   const chatBtn    = document.getElementById("chat-btn");
   const chatWindow = document.getElementById("chat-window");
   const sendBtn    = document.getElementById("send-btn");
@@ -15,14 +13,13 @@ window.addEventListener("DOMContentLoaded", () => {
   const header     = document.getElementById("chat-header");
 
   if (!chatBtn || !chatWindow || !sendBtn || !userInput || !chatBody || !header) {
-    console.error("[chat.js] Missing one or more required DOM elements.");
+    console.error("[chat.js] Missing DOM elements.");
     return;
   }
 
   // ---- Session ID ---------------------------------------------------------
-  // Read whatever session was saved last time (or null if first visit)
   let sessionId = localStorage.getItem("chat_session") || null;
-  console.log("[chat.js] Loaded session_id from localStorage:", sessionId);
+  console.log("[chat.js] Loaded session_id:", sessionId);
 
   // ---- State --------------------------------------------------------------
   let waiting  = false;
@@ -52,9 +49,8 @@ window.addEventListener("DOMContentLoaded", () => {
     userInput.style.height = Math.min(userInput.scrollHeight, 120) + "px";
   }
 
-  // ---- Draggable window ---------------------------------------------------
+  // ---- Draggable ----------------------------------------------------------
   let isDragging = false, offsetX = 0, offsetY = 0;
-
   header.addEventListener("mousedown", (e) => {
     isDragging = true;
     offsetX = e.clientX - chatWindow.offsetLeft;
@@ -82,13 +78,25 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ---- API call (THE FIXED PART) ------------------------------------------
-  async function postToAsk(question) {
-    const body = { question: question, session_id: sessionId };
-    console.log("[chat.js] Sending to /ask:", body);
+  // ---- Session end — fires when user closes tab/browser -------------------
+  function sendSessionEnd() {
+    if (!sessionId) return;
+    // Use sendBeacon so it works even during page unload
+    const payload = JSON.stringify({ session_id: sessionId });
+    navigator.sendBeacon(`${API}/session/end`, new Blob([payload], { type: "application/json" }));
+    console.log("[chat.js] Session end signal sent:", sessionId);
+    localStorage.removeItem("chat_session");
+    sessionId = null;
+  }
 
-    const url = `${API}/ask`;
-    const res = await fetch(url, {
+  window.addEventListener("beforeunload", sendSessionEnd);
+
+  // ---- API call -----------------------------------------------------------
+  async function postToAsk(question) {
+    const body = { question, session_id: sessionId };
+    console.log("[chat.js] Sending:", body);
+
+    const res = await fetch(`${API}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -96,16 +104,21 @@ window.addEventListener("DOMContentLoaded", () => {
 
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
-      throw new Error(`${url} -> ${res.status} ${res.statusText} ${txt}`);
+      throw new Error(`${API}/ask → ${res.status} ${txt}`);
     }
 
     const data = await res.json();
 
-    // Save session_id for the next message
     if (data.session_id) {
       sessionId = data.session_id;
       localStorage.setItem("chat_session", sessionId);
       console.log("[chat.js] Session saved:", sessionId);
+    }
+
+    // If session was ended (farewell), clear local session
+    if (data.session_id === null) {
+      localStorage.removeItem("chat_session");
+      sessionId = null;
     }
 
     return data.answer || "I couldn't find an answer.";
@@ -119,7 +132,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
     chatHistory.push({ type: "user", text });
     renderMessages();
-
     userInput.value = "";
     autoResizeTextarea();
 
@@ -136,10 +148,7 @@ window.addEventListener("DOMContentLoaded", () => {
     } catch (e) {
       console.error("[chat.js] Error:", e);
       chatHistory.pop();
-      chatHistory.push({
-        type: "bot",
-        text: "⚠️ I'm having trouble reaching the server right now. Please try again.",
-      });
+      chatHistory.push({ type: "bot", text: "⚠️ Having trouble reaching the server. Please try again." });
       renderMessages();
     } finally {
       waiting = false;
@@ -147,7 +156,7 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // ---- Wire events --------------------------------------------------------
+  // ---- Events -------------------------------------------------------------
   sendBtn.addEventListener("click", handleSend);
   userInput.addEventListener("input", autoResizeTextarea);
   userInput.addEventListener("keydown", (e) => {
