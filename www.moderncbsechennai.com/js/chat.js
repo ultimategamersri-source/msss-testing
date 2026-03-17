@@ -1,20 +1,10 @@
 // js/chat.js
-import { sendMessage } from "./config.js";
+// NOTE: We import API from config.js so the URL is defined in one place only.
+import { API } from "./config.js";
 
 window.addEventListener("DOMContentLoaded", () => {
-  // ---- Config / Base URL --------------------------------------------------
-  // Prefer API from js/config.js; otherwise fall back to Netlify proxy (/api)
-const API = "https://msss-backend-961983851669.asia-south1.run.app";
-console.log("[chat.js] Using Cloud Run API:", API);
 
-
-  if (typeof API === "undefined") {
-    console.warn(
-      "[chat.js] API not found; using fallback:", API
-    );
-  } else {
-    console.log("[chat.js] Using API:", API);
-  }
+  console.log("[chat.js] Using API:", API);
 
   // ---- DOM refs -----------------------------------------------------------
   const chatBtn    = document.getElementById("chat-btn");
@@ -29,8 +19,13 @@ console.log("[chat.js] Using Cloud Run API:", API);
     return;
   }
 
+  // ---- Session ID ---------------------------------------------------------
+  // Read whatever session was saved last time (or null if first visit)
+  let sessionId = localStorage.getItem("chat_session") || null;
+  console.log("[chat.js] Loaded session_id from localStorage:", sessionId);
+
   // ---- State --------------------------------------------------------------
-  let waiting = false;
+  let waiting  = false;
   let chatOpen = false;
   const chatHistory = [{ type: "bot", text: "Hello! Ask me about school." }];
 
@@ -58,9 +53,7 @@ console.log("[chat.js] Using Cloud Run API:", API);
   }
 
   // ---- Draggable window ---------------------------------------------------
-  let isDragging = false,
-    offsetX = 0,
-    offsetY = 0;
+  let isDragging = false, offsetX = 0, offsetY = 0;
 
   header.addEventListener("mousedown", (e) => {
     isDragging = true;
@@ -71,7 +64,7 @@ console.log("[chat.js] Using Cloud Run API:", API);
   document.addEventListener("mousemove", (e) => {
     if (isDragging) {
       chatWindow.style.left = e.clientX - offsetX + "px";
-      chatWindow.style.top = e.clientY - offsetY + "px";
+      chatWindow.style.top  = e.clientY - offsetY + "px";
     }
   });
   document.addEventListener("mouseup", () => {
@@ -89,24 +82,37 @@ console.log("[chat.js] Using Cloud Run API:", API);
     }
   });
 
-  // ---- API helper ---------------------------------------------------------
-  async function postJSON(path, bodyObj) {
-    const url = `${API}${path}`;
+  // ---- API call (THE FIXED PART) ------------------------------------------
+  async function postToAsk(question) {
+    const body = { question: text, session_id: sessionId };
+    console.log("[chat.js] Sending to /ask:", body);
+
+    const url = `${API}/ask`;
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(bodyObj),
-      // credentials: "include", // not needed unless you’re using cookies
+      body: JSON.stringify(body),
     });
+
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       throw new Error(`${url} -> ${res.status} ${res.statusText} ${txt}`);
     }
-    return res.json();
+
+    const data = await res.json();
+
+    // Save session_id for the next message
+    if (data.session_id) {
+      sessionId = data.session_id;
+      localStorage.setItem("chat_session", sessionId);
+      console.log("[chat.js] Session saved:", sessionId);
+    }
+
+    return data.answer || "I couldn't find an answer.";
   }
 
   // ---- Send flow ----------------------------------------------------------
-  async function sendMessage() {
+  async function handleSend() {
     if (waiting) return;
     const text = (userInput.value || "").trim();
     if (!text) return;
@@ -123,20 +129,16 @@ console.log("[chat.js] Using Cloud Run API:", API);
     sendBtn.disabled = true;
 
     try {
-      const data = await postJSON("/ask", { question: text });
-      chatHistory.pop(); // remove "Thinking…"
-      chatHistory.push({
-        type: "bot",
-        text: data?.answer || "I couldn't find an answer.",
-      });
+      const answer = await postToAsk(text);
+      chatHistory.pop();
+      chatHistory.push({ type: "bot", text: answer });
       renderMessages();
     } catch (e) {
-      console.error(e);
+      console.error("[chat.js] Error:", e);
       chatHistory.pop();
       chatHistory.push({
         type: "bot",
-        text:
-          "⚠️ I’m having trouble reaching the server right now. Please try again.",
+        text: "⚠️ I'm having trouble reaching the server right now. Please try again.",
       });
       renderMessages();
     } finally {
@@ -146,12 +148,12 @@ console.log("[chat.js] Using Cloud Run API:", API);
   }
 
   // ---- Wire events --------------------------------------------------------
-  sendBtn.addEventListener("click", sendMessage);
+  sendBtn.addEventListener("click", handleSend);
   userInput.addEventListener("input", autoResizeTextarea);
   userInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSend();
     }
   });
 
@@ -159,7 +161,6 @@ console.log("[chat.js] Using Cloud Run API:", API);
   renderMessages();
   autoResizeTextarea();
 
-  // Quick health ping
   fetch(`${API}/health`)
     .then((r) => r.json())
     .then((d) => console.log("[chat.js] Backend health:", d))
