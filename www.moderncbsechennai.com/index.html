@@ -58,54 +58,34 @@
       display: flex; flex-direction: column; gap: 8px; background: #fff;
     }
 
-    /* === Wrapper — only controls alignment === */
-    .message-wrapper {
-      display: flex;
-      max-width: 85%;
-      position: relative;
-    }
-    .message-wrapper.user { align-self: flex-end; justify-content: flex-end; }
-    .message-wrapper.bot  { align-self: flex-start; justify-content: flex-start; }
-
-    /* === Bubble === */
+    /* === Bubble — no wrapper, direct flex alignment === */
     .message {
-      padding: 10px 16px 22px 16px; /* extra bottom padding for timestamp overlap */
+      padding: 10px 14px 6px 14px;
       border-radius: 22px;
       word-wrap: break-word;
       font-family: "Comic Sans MS", sans-serif;
       font-size: 1em; line-height: 1.5;
       box-shadow: 0 2px 5px rgba(0,0,0,0.12);
       position: relative;
-      min-width: 60px;
+      display: flex;
+      flex-direction: column;
+      max-width: 80%;
     }
 
-    .user {
+    .message.user {
+      align-self: flex-end;
       background: linear-gradient(135deg, #42e695, #3bb2b8);
       color: #fff;
       border-bottom-right-radius: 5px;
     }
-    .bot {
+    .message.bot {
+      align-self: flex-start;
       background: linear-gradient(135deg, #7873f5, #a98df5);
       color: white;
       border-bottom-left-radius: 5px;
       padding-left: 28px;
     }
     .bot .icon { position: absolute; top: 8px; left: 8px; }
-
-    /* === Timestamp — inside bubble, bottom corner, visible on hover only === */
-    .msg-time {
-      position: absolute;
-      bottom: 5px;
-      font-size: 0.65em;
-      font-family: "Comic Sans MS", sans-serif;
-      opacity: 0;
-      transition: opacity 0.2s;
-      pointer-events: none;
-      white-space: nowrap;
-    }
-    .user  .msg-time { right: 10px; color: rgba(255,255,255,0.85); }
-    .bot   .msg-time { left: 28px;  color: rgba(255,255,255,0.75); }
-    .message-wrapper:hover .msg-time { opacity: 1; }
 
     /* === Bot content === */
     .bot-content { color: white; font-family: "Comic Sans MS", sans-serif; }
@@ -114,47 +94,57 @@
     .bot-content ul li::before { content: "•"; color: #ffed4f; font-weight: bold; margin-right: 6px; }
     .bot-content br { display: block; margin: 1px 0; }
 
-    /* === Hover action buttons (copy / edit) — appear outside bubble === */
-    .msg-actions {
-      display: flex; align-items: flex-end; gap: 4px;
-      opacity: 0; transition: opacity 0.2s;
-      padding-bottom: 6px;
+    /* === Bottom row inside bubble: time + icons === */
+    .bubble-footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 5px;
+      margin-top: 4px;
     }
-    .message-wrapper:hover .msg-actions { opacity: 1; }
 
-    /* Bot: actions appear to the RIGHT of bubble */
-    .message-wrapper.bot  { flex-direction: row; align-items: flex-end; }
-    .message-wrapper.bot  .msg-actions { order: 2; margin-left: 4px; }
+    .msg-time {
+      font-size: 0.65em;
+      color: rgba(255,255,255,0.75);
+      font-family: "Comic Sans MS", sans-serif;
+      white-space: nowrap;
+    }
 
-    /* User: actions appear to the LEFT of bubble */
-    .message-wrapper.user { flex-direction: row-reverse; align-items: flex-end; }
-    .message-wrapper.user .msg-actions { order: 2; margin-right: 4px; }
-
+    /* Copy and edit buttons — same colour as timestamp */
     .copy-btn, .edit-btn {
-      background: none; border: none; cursor: pointer;
-      padding: 2px; opacity: 0.6; transition: opacity 0.2s, transform 0.15s;
+      background: none; border: none; cursor: pointer; padding: 0;
+      display: flex; align-items: center;
+      transition: opacity 0.2s, transform 0.15s;
     }
-    .copy-btn:hover, .edit-btn:hover { opacity: 1; transform: scale(1.2); }
-    .copy-btn svg, .edit-btn svg { width: 14px; height: 14px; display: block; }
+    .copy-btn svg, .edit-btn svg {
+      width: 12px; height: 12px;
+      stroke: rgba(255,255,255,0.75);
+    }
+    .copy-btn:hover svg, .edit-btn:hover svg {
+      stroke: rgba(255,255,255,1);
+      transform: scale(1.2);
+    }
 
-    /* === Inline edit — inside user bubble === */
+    /* Edit button hidden by default, shows on bubble hover */
+    .edit-btn { opacity: 0; transition: opacity 0.2s; }
+    .message.user:hover .edit-btn { opacity: 1; }
+
+    /* === Inline edit textarea inside user bubble === */
     .inline-edit-area {
       display: none;
       flex-direction: column;
       gap: 6px;
-      margin-top: 4px;
+      margin-top: 6px;
     }
     .inline-edit-area textarea {
-      background: rgba(255,255,255,0.25);
+      background: rgba(255,255,255,0.2);
       border: 1px solid rgba(255,255,255,0.5);
       border-radius: 10px;
       color: white;
       font-family: "Comic Sans MS", sans-serif;
       font-size: 0.95em;
       padding: 6px 8px;
-      resize: none;
-      outline: none;
-      width: 100%;
+      resize: none; outline: none; width: 100%;
     }
     .inline-edit-area textarea::placeholder { color: rgba(255,255,255,0.6); }
     .inline-edit-area .edit-btns { display: flex; gap: 6px; justify-content: flex-end; }
@@ -163,7 +153,7 @@
       font-family: "Comic Sans MS", sans-serif; font-size: 0.8em; cursor: pointer;
     }
     .edit-save   { background: rgba(255,255,255,0.3); color: white; }
-    .edit-cancel { background: rgba(0,0,0,0.15); color: white; }
+    .edit-cancel { background: rgba(0,0,0,0.15);      color: white; }
 
     /* === Typing indicator === */
     .typing-indicator { display: flex; align-items: center; gap: 8px; color: #ffffffcc; font-family: "Comic Sans MS", sans-serif; font-size: 0.9em; }
