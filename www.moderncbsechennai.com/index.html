@@ -3,6 +3,650 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ABC School | International Standard Demo</title>
+
+  <link rel="stylesheet" href="dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="css/style.css">
+
+  <script type="module" src="js/config.js"></script>
+  <script src="js/jquery.js"></script>
+  <script src="dist/js/bootstrap.min.js"></script>
+  <script type="module" src="js/chat.js"></script>
+
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+      background:#050510;
+      color:#101320;
+      line-height:1.6;
+      overflow-x:hidden;
+    }
+    img{max-width:100%;display:block;}
+
+    .page-wrap{background:#050510;color:#f5f5f7;}
+    .container-narrow{max-width:1120px;margin:0 auto;padding:0 24px;}
+
+    .top-bar{
+      position:sticky;top:0;z-index:40;
+      backdrop-filter:blur(18px);
+      background:rgba(5,5,16,.92);
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .top-bar-inner{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:14px 24px;max-width:1120px;margin:0 auto;
+    }
+    .brand-lockup{display:flex;align-items:center;gap:10px;}
+    .brand-mark{
+      width:32px;height:32px;border-radius:10px;
+      background:radial-gradient(circle at 0 0,#ffe140,#ff6ec4);
+      box-shadow:0 0 0 1px rgba(255,255,255,.15);
+    }
+    .brand-text{display:flex;flex-direction:column;gap:2px;}
+    .brand-text span:first-child{
+      font-size:.88rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    }
+    .brand-text span:last-child{font-size:.72rem;color:rgba(255,255,255,.65);}
+    .nav-links{display:flex;align-items:center;gap:22px;font-size:.82rem;letter-spacing:.06em;text-transform:uppercase;}
+    .nav-links a{
+      color:rgba(255,255,255,.78);text-decoration:none;position:relative;padding-bottom:4px;
+    }
+    .nav-links a::after{
+      content:"";position:absolute;left:0;bottom:0;width:0;height:2px;
+      background:linear-gradient(90deg,#ffe140,#ff6ec4);transition:width .25s ease;
+    }
+    .nav-links a:hover::after{width:100%;}
+
+    .hero{
+      position:relative;
+      padding:80px 0 56px;
+      background:
+        radial-gradient(circle at top left,rgba(255,225,64,.4),transparent 55%),
+        radial-gradient(circle at bottom right,rgba(123,97,255,.4),transparent 55%),
+        linear-gradient(145deg,#050510,#050510 40%,#06061a 100%);
+    }
+    .hero-grid{
+      display:grid;
+      grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);
+      gap:40px;
+      align-items:center;
+    }
+    .hero-kicker{
+      font-size:.8rem;letter-spacing:.2em;text-transform:uppercase;
+      color:rgba(255,255,255,.7);margin-bottom:12px;
+    }
+    .hero-title{
+      font-size:clamp(2.4rem,4vw,3.4rem);
+      line-height:1.1;font-weight:800;margin-bottom:14px;
+    }
+    .hero-title span{
+      background:linear-gradient(90deg,#ffe140,#ff9f43,#ff6ec4);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .hero-sub{
+      font-size:1rem;color:rgba(244,244,248,.86);
+      max-width:520px;margin-bottom:24px;
+    }
+    .hero-meta{
+      display:flex;flex-wrap:wrap;gap:18px;
+      font-size:.9rem;color:rgba(230,230,245,.78);margin-bottom:28px;
+    }
+    .hero-meta span{display:inline-flex;align-items:center;gap:6px;}
+    .hero-meta span b{font-weight:600;}
+    .hero-cta-row{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:26px;}
+    .btn-primary{
+      border:none;border-radius:999px;padding:12px 26px;
+      font-size:.9rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+      cursor:pointer;color:#050510;
+      background:linear-gradient(135deg,#ffe140,#ff6ec4);
+      box-shadow:0 12px 30px rgba(0,0,0,.55);
+      transition:transform .18s ease,box-shadow .18s ease;
+    }
+    .btn-primary:hover{transform:translateY(-1px);box-shadow:0 18px 40px rgba(0,0,0,.7);}
+    .btn-link-ghost{
+      border-radius:999px;padding:11px 22px;border:1px solid rgba(255,255,255,.35);
+      background:rgba(5,5,20,.6);color:#f5f5f7;font-size:.85rem;
+      letter-spacing:.08em;text-transform:uppercase;cursor:pointer;
+      display:inline-flex;align-items:center;gap:8px;
+    }
+    .btn-link-ghost span:last-child{opacity:.7;}
+    .hero-footnote{font-size:.78rem;color:rgba(230,230,245,.7);}
+
+    .hero-photo-wrap{
+      position:relative;border-radius:24px;overflow:hidden;
+      box-shadow:0 26px 55px rgba(0,0,0,.75);
+    }
+    .hero-photo-wrap img{
+      width:100%;height:100%;object-fit:cover;
+      transform:scale(1.02);transition:transform 8s ease;
+    }
+    .hero-photo-wrap img.loaded{transform:scale(1);}
+    .hero-chip{
+      position:absolute;left:18px;bottom:18px;
+      background:rgba(5,5,18,.80);border-radius:999px;
+      padding:8px 14px;display:flex;align-items:center;gap:8px;
+      border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(16px);
+      font-size:.78rem;
+    }
+    .hero-chip span:first-child{
+      width:9px;height:9px;border-radius:50%;background:#2ecc71;box-shadow:0 0 10px #2ecc71;
+    }
+
+    .strip{
+      background:#050510;
+      border-top:1px solid rgba(255,255,255,.06);
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .strip-inner{
+      max-width:1120px;margin:0 auto;padding:18px 24px;
+      display:flex;flex-wrap:wrap;justify-content:space-between;
+      align-items:center;gap:12px;font-size:.78rem;
+      color:rgba(220,220,240,.8);
+    }
+    .strip-label{letter-spacing:.2em;text-transform:uppercase;color:rgba(255,255,255,.6);}
+    .strip-tags{display:flex;flex-wrap:wrap;gap:8px;}
+    .strip-tag{
+      padding:6px 10px;border-radius:999px;
+      border:1px solid rgba(255,255,255,.16);
+      background:rgba(10,10,25,.85);
+      font-size:.78rem;color:rgba(245,245,255,.86);
+    }
+
+    .section{padding:56px 0;background:#050510;}
+    .section-header{display:flex;flex-direction:column;gap:8px;margin-bottom:28px;}
+    .section-kicker{
+      font-size:.78rem;letter-spacing:.18em;text-transform:uppercase;
+      color:rgba(255,255,255,.7);
+    }
+    .section-title{font-size:1.7rem;font-weight:700;}
+    .section-title span{
+      background:linear-gradient(90deg,#ffe140,#ff6ec4);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .section-sub{color:rgba(225,225,240,.8);max-width:640px;font-size:.96rem;}
+
+    .spotlight-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+      gap:22px;
+    }
+    .spotlight-card{
+      background:#0a0b1a;border-radius:18px;overflow:hidden;
+      border:1px solid rgba(255,255,255,.08);
+      display:flex;flex-direction:column;min-height:260px;
+    }
+    .spotlight-media{height:150px;overflow:hidden;}
+    .spotlight-media img{
+      width:100%;height:100%;object-fit:cover;
+      transform:scale(1.03);transition:transform .8s ease;
+    }
+    .spotlight-card:hover .spotlight-media img{transform:scale(1.08);}
+    .spotlight-body{padding:16px 16px 18px;display:flex;flex-direction:column;gap:8px;}
+    .spotlight-tag{
+      font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;
+      color:rgba(255,255,255,.6);
+    }
+    .spotlight-title{font-size:1rem;font-weight:600;}
+    .spotlight-meta{font-size:.86rem;color:rgba(220,220,240,.8);}
+    .spotlight-link{
+      margin-top:auto;font-size:.78rem;
+      letter-spacing:.16em;text-transform:uppercase;color:#ffe140;
+    }
+
+    .pill-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+      gap:18px;
+    }
+    .pill-card{
+      display:flex;gap:14px;padding:14px 16px;
+      border-radius:14px;background:#090a18;
+      border:1px solid rgba(255,255,255,.08);
+      align-items:flex-start;
+    }
+    .pill-thumb{flex:0 0 70px;height:70px;border-radius:12px;overflow:hidden;}
+    .pill-thumb img{width:100%;height:100%;object-fit:cover;}
+    .pill-body-title{font-size:.96rem;font-weight:600;margin-bottom:4px;}
+    .pill-body-text{font-size:.86rem;color:rgba(215,215,235,.86);}
+
+    .stats-row{display:flex;flex-wrap:wrap;gap:26px;margin-top:24px;}
+    .stat-chip{
+      padding:14px 18px;border-radius:14px;
+      background:#080818;border:1px solid rgba(255,255,255,.08);
+      min-width:140px;
+    }
+    .stat-chip strong{
+      display:block;font-size:1.6rem;margin-bottom:2px;
+      background:linear-gradient(135deg,#ffe140,#ff6ec4);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .stat-chip span{
+      font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;
+      color:rgba(215,215,230,.8);
+    }
+
+    footer{
+      padding:28px 24px 36px;background:#050510;
+      border-top:1px solid rgba(255,255,255,.08);
+      text-align:center;font-size:.8rem;
+      color:rgba(210,210,230,.7);
+    }
+    footer span{color:#ffe140;}
+
+    #chat-btn{
+      position:fixed;bottom:24px;right:24px;
+      background:linear-gradient(270deg,#ff6ec4,#7873f5,#42e695,#ffe140,#ff6ec4);
+      background-size:1000% 1000%;color:white;border:none;border-radius:50%;
+      width:56px;height:56px;font-size:24px;cursor:pointer;
+      animation:moveGrad 4s linear infinite,glowPulse 2.5s ease-in-out infinite;
+      box-shadow:0 4px 20px rgba(0,0,0,.4);z-index:30;transition:transform .2s;
+    }
+    #chat-btn:hover{transform:scale(1.08);}
+    #chat-btn.wiggle{animation:moveGrad 4s linear infinite,wiggle .6s ease-in-out 3;}
+    #chat-badge{
+      position:fixed;bottom:60px;right:18px;background:#ff4757;
+      color:white;border-radius:50%;width:20px;height:20px;
+      font-size:11px;font-weight:700;display:none;align-items:center;
+      justify-content:center;z-index:31;
+    }
+    #chat-badge.show{display:flex;}
+    #fireworks-canvas{
+      position:fixed;inset:0;width:100vw;height:100vh;
+      pointer-events:none;z-index:29;display:none;
+    }
+    #fireworks-canvas.active{display:block;}
+    #chat-window{
+      position:fixed;bottom:96px;right:24px;width:350px;
+      min-height:200px;max-height:600px;background:#fdfdfd;
+      border-radius:24px;box-shadow:0 12px 40px rgba(0,0,0,.3);
+      flex-direction:column;z-index:30;display:flex;
+      transform-origin:bottom right;
+    }
+    #chat-window.hidden{
+      opacity:0;pointer-events:none;
+      transform:scale(.3) translateY(40px);
+      transition:opacity .35s ease,transform .35s cubic-bezier(.34,1.56,.64,1);
+    }
+
+    @keyframes moveGrad{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+    @keyframes glowPulse{0%,100%{box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 0 0 rgba(120,115,245,.5)}50%{box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 0 14px rgba(120,115,245,0)}}
+    @keyframes wiggle{0%,100%{transform:rotate(0)}20%{transform:rotate(-12deg)}40%{transform:rotate(12deg)}60%{transform:rotate(-8deg)}80%{transform:rotate(8deg)}}
+
+    .reveal{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease;}
+    .reveal.visible{opacity:1;transform:translateY(0);}
+
+    @media(max-width:900px){
+      .hero-grid{grid-template-columns:minmax(0,1fr);}
+      .hero{padding-top:72px;}
+      .top-bar-inner{padding-inline:18px;}
+      .nav-links{display:none;}
+    }
+    @media(max-width:768px){
+      .strip-inner{flex-direction:column;align-items:flex-start;}
+      #chat-window{
+        width:calc(100vw - 20px);right:10px;bottom:86px;
+        max-height:70vh;border-radius:20px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-wrap">
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <div class="brand-lockup">
+        <div class="brand-mark"></div>
+        <div class="brand-text">
+          <span>ABC SCHOOL</span>
+          <span>CBSE · Chennai · Since 2000</span>
+        </div>
+      </div>
+      <nav class="nav-links">
+        <a href="#academics">Academics</a>
+        <a href="#facilities">Facilities</a>
+        <a href="#life">Student Life</a>
+        <a href="#results">Results</a>
+        <a href="#contact">Contact</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container-narrow hero-grid">
+      <div class="reveal">
+        <p class="hero-kicker">INTERNATIONAL STANDARD DEMO CAMPUS</p>
+        <h1 class="hero-title">
+          A day-and-night school<br>
+          where <span>real learning</span><br>
+          happens every hour.
+        </h1>
+        <p class="hero-sub">
+          ABC Senior Secondary School in Chennai blends strong academics, rich Indian culture,
+          and future-ready technology to create a campus that feels alive for students,
+          parents, and teachers.
+        </p>
+        <div class="hero-meta">
+          <span><b>KG–XII</b> CBSE curriculum</span>
+          <span><b>1200+</b> students · <b>85</b> teachers</span>
+          <span><b>100%</b> Board exam pass rate*</span>
+        </div>
+        <div class="hero-cta-row">
+          <button class="btn-primary">Start Admissions Walk-through</button>
+          <button class="btn-link-ghost">
+            <span>Watch Campus In Action</span>
+            <span>▶</span>
+          </button>
+        </div>
+        <p class="hero-footnote">
+          *Demo data for this international-level project. Replace with your real school stats.
+        </p>
+      </div>
+
+      <div class="hero-photo-wrap reveal">
+        <img id="heroPhoto" src="assets/campus-night.png" alt="ABC School campus at night with starry sky">
+        <div class="hero-chip">
+          <span></span>
+          <div>
+            <div style="font-size:.78rem;font-weight:600;">Evening Cultural Fest · ABC School</div>
+            <div style="font-size:.72rem;color:rgba(230,230,245,.75);">Real students · Real stage · Real celebrations</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="strip">
+    <div class="strip-inner">
+      <div class="strip-label">Parents across Chennai choose ABC for</div>
+      <div class="strip-tags">
+        <span class="strip-tag">Strong board results</span>
+        <span class="strip-tag">Smart classrooms</span>
+        <span class="strip-tag">Olympiad &amp; NEET/JEE focus</span>
+        <span class="strip-tag">Arts, culture &amp; sports</span>
+        <span class="strip-tag">Dedicated computer &amp; science labs</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="academics">
+    <div class="container-narrow">
+      <div class="section-header reveal">
+        <div class="section-kicker">SPOTLIGHT</div>
+        <h2 class="section-title">Academic days that feel <span>well designed</span>.</h2>
+        <p class="section-sub">
+          These are not stock photos. Each panel below is from an actual ABC School classroom or lab,
+          showing how theory, technology, and teacher care come together every period.
+        </p>
+      </div>
+
+      <div class="spotlight-grid">
+        <article class="spotlight-card reveal">
+          <div class="spotlight-media">
+            <img src="assets/dance-fest.png" alt="Cultural dance performance on school stage">
+          </div>
+          <div class="spotlight-body">
+            <div class="spotlight-tag">CULTURAL FEST</div>
+            <h3 class="spotlight-title">Annual day that feels like a professional production.</h3>
+            <p class="spotlight-meta">
+              From lighting to choreography, students own the stage while parents experience a
+              carefully curated show that celebrates Indian art forms.
+            </p>
+            <div class="spotlight-link">View cultural calendar</div>
+          </div>
+        </article>
+
+        <article class="spotlight-card reveal">
+          <div class="spotlight-media">
+            <img src="assets/smart-classroom.png" alt="Teacher taking class using interactive panel">
+          </div>
+          <div class="spotlight-body">
+            <div class="spotlight-tag">SMART CLASSROOMS</div>
+            <h3 class="spotlight-title">Concepts explained on digital boards, not chalk dust.</h3>
+            <p class="spotlight-meta">
+              Interactive panels, visual models and group work make math, science and languages
+              easier to understand and remember.
+            </p>
+            <div class="spotlight-link">See sample lesson plans</div>
+          </div>
+        </article>
+
+        <article class="spotlight-card reveal">
+          <div class="spotlight-media">
+            <img src="assets/computer-lab.png" alt="Students working on computers in the lab">
+          </div>
+          <div class="spotlight-body">
+            <div class="spotlight-tag">COMPUTER LAB</div>
+            <h3 class="spotlight-title">Every child codes, designs and explores safely online.</h3>
+            <p class="spotlight-meta">
+              Dedicated computer periods from middle school onwards, with a clear progression
+              from basic digital skills to coding, robotics and AI projects.
+            </p>
+            <div class="spotlight-link">Download ICT curriculum</div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="facilities">
+    <div class="container-narrow">
+      <div class="section-header reveal">
+        <div class="section-kicker">FACILITIES</div>
+        <h2 class="section-title">Spaces built for <span>hands-on learning</span>.</h2>
+        <p class="section-sub">
+          Like the service tiles on indium.tech, these blocks explain exactly what the campus offers,
+          backed by real photographs from your school.
+        </p>
+      </div>
+
+      <div class="pill-grid">
+        <article class="pill-card reveal">
+          <div class="pill-thumb">
+            <img src="assets/science-lab.png" alt="Students performing experiments in science lab">
+          </div>
+          <div>
+            <div class="pill-body-title">Integrated Science Labs</div>
+            <p class="pill-body-text">
+              Fully equipped Physics, Chemistry and Biology labs where students handle microscopes,
+              reagents and real experiments under safe supervision.
+            </p>
+          </div>
+        </article>
+
+        <article class="pill-card reveal">
+          <div class="pill-thumb">
+            <img src="assets/junior-class.png" alt="Middle school classroom with charts and projects">
+          </div>
+          <div>
+            <div class="pill-body-title">Colourful Middle School Rooms</div>
+            <p class="pill-body-text">
+              Walls filled with student work, project charts and anchor diagrams, making the classroom
+              itself a revision tool.
+            </p>
+          </div>
+        </article>
+
+        <article class="pill-card reveal">
+          <div class="pill-thumb">
+            <img src="assets/computer-lab-2.png" alt="Senior students using computers">
+          </div>
+          <div>
+            <div class="pill-body-title">Senior Computer Suites</div>
+            <p class="pill-body-text">
+              High–speed network, individual systems and mentors who guide students from basic
+              programming to industry-style projects.
+            </p>
+          </div>
+        </article>
+      </div>
+
+      <div class="stats-row reveal">
+        <div class="stat-chip">
+          <strong>40+</strong>
+          <span>CLASSROOMS</span>
+        </div>
+        <div class="stat-chip">
+          <strong>6</strong>
+          <span>SCIENCE &amp; ICT LABS</span>
+        </div>
+        <div class="stat-chip">
+          <strong>5</strong>
+          <span>PLAY &amp; SPORTS ZONES</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="life">
+    <div class="container-narrow">
+      <div class="section-header reveal">
+        <div class="section-kicker">STUDENT LIFE</div>
+        <h2 class="section-title">Balanced between <span>rigour &amp; joy</span>.</h2>
+        <p class="section-sub">
+          From classical dance to coding marathons, ABC School’s calendar is filled with events
+          that give every child a chance to be seen, heard and celebrated.
+        </p>
+      </div>
+
+      <div class="pill-grid">
+        <article class="pill-card reveal">
+          <div class="pill-thumb">
+            <img src="assets/dance-fest.png" alt="Bharatanatyam performers at annual day">
+          </div>
+          <div>
+            <div class="pill-body-title">Arts &amp; Culture</div>
+            <p class="pill-body-text">
+              Bharatanatyam, music, visual arts, debates and theatre – guided by mentors who
+              understand both tradition and stagecraft.
+            </p>
+          </div>
+        </article>
+
+        <article class="pill-card reveal">
+          <div class="pill-thumb">
+            <img src="assets/science-lab.png" alt="Students collaborating in science practical">
+          </div>
+          <div>
+            <div class="pill-body-title">STEM Clubs &amp; Fairs</div>
+            <p class="pill-body-text">
+              Science day exhibitions, coding clubs and maths circles where students present
+              working models, not just charts.
+            </p>
+          </div>
+        </article>
+
+        <article class="pill-card reveal">
+          <div class="pill-thumb">
+            <img src="assets/computer-lab.png" alt="Students in computer lab with teacher support">
+          </div>
+          <div>
+            <div class="pill-body-title">Digital Citizenship</div>
+            <p class="pill-body-text">
+              Age-appropriate sessions on safe internet use, AI tools and digital portfolios –
+              preparing students for the real online world.
+            </p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="results">
+    <div class="container-narrow">
+      <div class="section-header reveal">
+        <div class="section-kicker">RESULTS &amp; SUPPORT</div>
+        <h2 class="section-title">Data-backed results with a <span>human + AI</span> layer.</h2>
+        <p class="section-sub">
+          Inspired by the “AI-driven engineering” message on indium.tech,
+          this section explains how ABC combines experienced teachers with
+          your Brightly AI assistant for parents and students.
+        </p>
+      </div>
+
+      <div class="spotlight-grid">
+        <article class="spotlight-card reveal">
+          <div class="spotlight-body">
+            <div class="spotlight-tag">BOARD EXAMS</div>
+            <h3 class="spotlight-title">Consistently strong Grade X &amp; XII performance.</h3>
+            <p class="spotlight-meta">
+              Structured revision plans, handwritten paper analysis, and subject-wise
+              doubt-clearing marathons ensure every student knows what to expect on exam day.
+              Replace this block with your real percentages and toppers.
+            </p>
+          </div>
+        </article>
+
+        <article class="spotlight-card reveal">
+          <div class="spotlight-body">
+            <div class="spotlight-tag">BRIGHTLY · SCHOOL AI</div>
+            <h3 class="spotlight-title">Ask fees, timings or policies anytime.</h3>
+            <p class="spotlight-meta">
+              Brightly, the in-house AI assistant, is trained on ABC School information.
+              Parents can ask about admissions, transport, exams or activities and get
+              clear, conversational answers.
+            </p>
+            <p class="spotlight-link">Open Brightly chat in the corner →</p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <footer id="contact">
+    <p>© 2026 <span>ABC Senior Secondary School</span> · Nanganallur, Chennai – 600061</p>
+    <p style="margin-top:6px;">Demo site for international-level project · Replace text &amp; numbers with official school data.</p>
+  </footer>
+</div>
+
+<button id="chat-btn">💬</button>
+<div id="chat-badge"></div>
+<canvas id="fireworks-canvas"></canvas>
+<div id="chat-window" class="hidden">
+  <div id="chat-header">
+    <span>✨ Brightly (School Assistant)</span>
+    <div class="header-btns">
+      <button id="fullscreen-btn" title="Fullscreen">⛶</button>
+      <button id="close-chat-btn" title="Close">✕</button>
+    </div>
+  </div>
+  <div id="chat-body"></div>
+  <div id="chat-input">
+    <textarea id="user-input" placeholder="Ask something..."></textarea>
+    <button id="send-btn">Send</button>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add("visible");
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.18 });
+
+  document.querySelectorAll(".reveal").forEach(el => observer.observe(el));
+
+  const heroImg = document.getElementById("heroPhoto");
+  if (heroImg) {
+    if (heroImg.complete) heroImg.classList.add("loaded");
+    else heroImg.addEventListener("load", () => heroImg.classList.add("loaded"));
+  }
+});
+</script>
+
+</body>
+</html>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ABC Senior Secondary School — Chennai</title>
   <link rel="stylesheet" href="dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="css/style.css">
