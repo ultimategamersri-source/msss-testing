@@ -128,6 +128,12 @@
     }
     #fireworks-canvas.active { opacity: 1; }
 
+    /* Scrollbar only when needed */
+    #chat-body { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #c0b4f5 transparent; }
+    #chat-body::-webkit-scrollbar { width: 4px; }
+    #chat-body::-webkit-scrollbar-thumb { background: #c0b4f5; border-radius: 4px; }
+    #chat-body::-webkit-scrollbar-track { background: transparent; }
+
     /* === Chat Header === */
     #chat-header {
       background: linear-gradient(270deg, #ff6ec4, #7873f5, #42e695, #ffe140, #ff6ec4);
@@ -141,14 +147,22 @@
       font-size: large; cursor: grab;
     }
 
-    #close-chat-btn {
+    #close-chat-btn, #fullscreen-btn {
       background: rgba(255,255,255,0.2); border: none;
       border-radius: 50%; width: 28px; height: 28px;
-      color: white; font-size: 16px; cursor: pointer;
+      color: white; font-size: 14px; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       transition: background 0.2s; flex-shrink: 0; line-height: 1;
     }
-    #close-chat-btn:hover { background: rgba(255,255,255,0.4); }
+    #close-chat-btn:hover, #fullscreen-btn:hover { background: rgba(255,255,255,0.4); }
+    .header-btns { display: flex; gap: 6px; align-items: center; }
+
+    /* Fullscreen mode */
+    #chat-window.fullscreen {
+      width: 100vw !important; height: 100vh !important;
+      max-height: 100vh !important; bottom: 0 !important;
+      right: 0 !important; border-radius: 0 !important;
+    }
 
     /* === Chat Body === */
     #chat-body {
@@ -273,7 +287,10 @@
   <div id="chat-window" class="hidden">
     <div id="chat-header">
       <span>✨ Brightly (School Assistant)</span>
-      <button id="close-chat-btn">✕</button>
+      <div class="header-btns">
+        <button id="fullscreen-btn" title="Fullscreen">⛶</button>
+        <button id="close-chat-btn" title="Close">✕</button>
+      </div>
     </div>
     <div id="chat-body"></div>
     <div id="chat-input">
