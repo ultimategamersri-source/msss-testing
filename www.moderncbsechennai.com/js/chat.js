@@ -14,15 +14,11 @@ window.addEventListener("DOMContentLoaded", () => {
     console.error("[chat.js] Missing DOM elements."); return;
   }
 
-  // ---- Session ------------------------------------------------------------
   let sessionId = localStorage.getItem("chat_session") || null;
-
-  // ---- State --------------------------------------------------------------
   let waiting = false, chatOpen = false;
   const WELCOME = "Hello! Ask me about school. 😊";
   const chatHistory = [{ type: "bot", text: WELCOME, time: getTime() }];
 
-  // ---- Helpers ------------------------------------------------------------
   function getTime() {
     const now = new Date();
     let h = now.getHours();
@@ -47,32 +43,22 @@ window.addEventListener("DOMContentLoaded", () => {
     return html;
   }
 
-  // SVG icons
-  const COPY_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  const COPY_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <rect x="9" y="9" width="13" height="13" rx="2"/>
     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
   </svg>`;
-  const COPY_OK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="#42e695" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  const COPY_OK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="stroke:rgba(255,255,255,0.75)">
     <polyline points="20 6 9 17 4 12"/>
   </svg>`;
-  const EDIT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  const EDIT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
   </svg>`;
 
-  // ---- Render -------------------------------------------------------------
   function renderMessages() {
     chatBody.innerHTML = "";
 
     chatHistory.forEach((msg, idx) => {
-      const wrapper = document.createElement("div");
-      wrapper.className = `message-wrapper ${msg.type}`;
-
-      // --- Action buttons (outside bubble) ---
-      const actions = document.createElement("div");
-      actions.className = "msg-actions";
-
-      // --- Bubble ---
       const bubble = document.createElement("div");
       bubble.className = `message ${msg.type}`;
 
@@ -91,12 +77,14 @@ window.addEventListener("DOMContentLoaded", () => {
           content.innerHTML = parseMarkdown(msg.text);
           bubble.appendChild(content);
 
-          // Timestamp inside bubble
+          // Footer: time + copy (always visible, bottom right)
+          const footer = document.createElement("div");
+          footer.className = "bubble-footer";
+
           const ts = document.createElement("span");
           ts.className = "msg-time"; ts.textContent = msg.time || "";
-          bubble.appendChild(ts);
+          footer.appendChild(ts);
 
-          // Copy button in actions
           if (idx > 0) {
             const copyBtn = document.createElement("button");
             copyBtn.className = "copy-btn"; copyBtn.title = "Copy";
@@ -107,23 +95,20 @@ window.addEventListener("DOMContentLoaded", () => {
                 setTimeout(() => copyBtn.innerHTML = COPY_SVG, 2000);
               });
             });
-            actions.appendChild(copyBtn);
+            footer.appendChild(copyBtn);
           }
+
+          bubble.appendChild(footer);
         }
 
       } else {
-        // User bubble — text span (hidden when editing)
+        // User text
         const textSpan = document.createElement("span");
         textSpan.className = "user-text";
         textSpan.textContent = msg.text;
         bubble.appendChild(textSpan);
 
-        // Timestamp inside bubble
-        const ts = document.createElement("span");
-        ts.className = "msg-time"; ts.textContent = msg.time || "";
-        bubble.appendChild(ts);
-
-        // Inline edit area — lives INSIDE the bubble, styled to match
+        // Inline edit textarea (hidden by default, inside bubble)
         const editArea = document.createElement("div");
         editArea.className = "inline-edit-area";
         editArea.innerHTML = `
@@ -134,13 +119,20 @@ window.addEventListener("DOMContentLoaded", () => {
           </div>`;
         bubble.appendChild(editArea);
 
-        // Edit button in actions
+        // Footer: time (always) + edit (hover via CSS)
+        const footer = document.createElement("div");
+        footer.className = "bubble-footer";
+
+        const ts = document.createElement("span");
+        ts.className = "msg-time"; ts.textContent = msg.time || "";
+        footer.appendChild(ts);
+
         const editBtn = document.createElement("button");
         editBtn.className = "edit-btn"; editBtn.title = "Edit";
         editBtn.innerHTML = EDIT_SVG;
         editBtn.addEventListener("click", () => {
-          const isEditing = editArea.style.display === "flex";
-          if (isEditing) {
+          const isOpen = editArea.style.display === "flex";
+          if (isOpen) {
             editArea.style.display = "none";
             textSpan.style.display = "";
           } else {
@@ -150,6 +142,8 @@ window.addEventListener("DOMContentLoaded", () => {
             ta.value = msg.text; ta.focus();
           }
         });
+        footer.appendChild(editBtn);
+        bubble.appendChild(footer);
 
         // Cancel
         editArea.querySelector(".edit-cancel").addEventListener("click", () => {
@@ -157,18 +151,15 @@ window.addEventListener("DOMContentLoaded", () => {
           textSpan.style.display = "";
         });
 
-        // Save — resend from this point
+        // Save — edit msg, remove after, resend
         editArea.querySelector(".edit-save").addEventListener("click", async () => {
           const ta = editArea.querySelector("textarea");
           const newText = ta.value.trim();
           if (!newText || waiting) return;
 
-          // Update history: edit this message, remove everything after
           msg.text = newText;
           msg.time = getTime();
           chatHistory.splice(idx + 1);
-
-          // Resend
           chatHistory.push({ type: "bot", text: "", time: null, typing: true });
           renderMessages();
           waiting = true; sendBtn.disabled = true;
@@ -185,14 +176,9 @@ window.addEventListener("DOMContentLoaded", () => {
             renderMessages();
           }
         });
-
-        actions.appendChild(editBtn);
       }
 
-      // Assemble wrapper
-      wrapper.appendChild(bubble);
-      if (!msg.typing) wrapper.appendChild(actions);
-      chatBody.appendChild(wrapper);
+      chatBody.appendChild(bubble);
     });
 
     chatBody.scrollTop = chatBody.scrollHeight;
@@ -203,7 +189,6 @@ window.addEventListener("DOMContentLoaded", () => {
     userInput.style.height = Math.min(userInput.scrollHeight, 120) + "px";
   }
 
-  // ---- Open/Close ---------------------------------------------------------
   function openChat()  { chatOpen = true;  chatWindow.classList.remove("hidden"); autoResizeTextarea(); userInput.focus(); }
   function closeChat() { chatOpen = false; chatWindow.classList.add("hidden"); }
 
@@ -213,7 +198,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
   chatBtn.addEventListener("click", () => chatOpen ? closeChat() : openChat());
 
-  // ---- Draggable ----------------------------------------------------------
   let isDragging = false, offsetX = 0, offsetY = 0;
   header.addEventListener("mousedown", (e) => {
     isDragging = true;
@@ -229,7 +213,6 @@ window.addEventListener("DOMContentLoaded", () => {
   });
   document.addEventListener("mouseup", () => { isDragging = false; header.style.cursor = "grab"; });
 
-  // ---- Session end --------------------------------------------------------
   function sendSessionEnd() {
     if (!sessionId) return;
     navigator.sendBeacon(`${API}/session/end`, new Blob([JSON.stringify({ session_id: sessionId })], { type: "application/json" }));
@@ -237,7 +220,6 @@ window.addEventListener("DOMContentLoaded", () => {
   }
   window.addEventListener("beforeunload", sendSessionEnd);
 
-  // ---- API ----------------------------------------------------------------
   async function postToAsk(question) {
     const res = await fetch(`${API}/ask`, {
       method: "POST",
@@ -246,12 +228,11 @@ window.addEventListener("DOMContentLoaded", () => {
     });
     if (!res.ok) throw new Error(`${res.status}`);
     const data = await res.json();
-    if (data.session_id)      { sessionId = data.session_id; localStorage.setItem("chat_session", sessionId); }
+    if (data.session_id)          { sessionId = data.session_id; localStorage.setItem("chat_session", sessionId); }
     if (data.session_id === null) { localStorage.removeItem("chat_session"); sessionId = null; }
     return data.answer || "I couldn't find an answer.";
   }
 
-  // ---- Send ---------------------------------------------------------------
   async function handleSend() {
     if (waiting) return;
     const text = (userInput.value || "").trim();
