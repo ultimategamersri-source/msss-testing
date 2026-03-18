@@ -58,23 +58,25 @@
       display: flex; flex-direction: column; gap: 8px; background: #fff;
     }
 
-    /* === Message wrapper — hover reveals actions === */
+    /* === Wrapper — only controls alignment === */
     .message-wrapper {
-      display: flex; flex-direction: column;
-      max-width: 85%; position: relative;
+      display: flex;
+      max-width: 85%;
+      position: relative;
     }
-    .message-wrapper.user { align-self: flex-end; align-items: flex-end; }
-    .message-wrapper.bot  { align-self: flex-start; align-items: flex-start; }
+    .message-wrapper.user { align-self: flex-end; justify-content: flex-end; }
+    .message-wrapper.bot  { align-self: flex-start; justify-content: flex-start; }
 
     /* === Bubble === */
     .message {
-      padding: 10px 16px; border-radius: 22px;
+      padding: 10px 16px 22px 16px; /* extra bottom padding for timestamp overlap */
+      border-radius: 22px;
       word-wrap: break-word;
       font-family: "Comic Sans MS", sans-serif;
       font-size: 1em; line-height: 1.5;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-      display: flex; flex-direction: column; gap: 4px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.12);
       position: relative;
+      min-width: 60px;
     }
 
     .user {
@@ -84,10 +86,26 @@
     }
     .bot {
       background: linear-gradient(135deg, #7873f5, #a98df5);
-      color: white; border-bottom-left-radius: 5px;
+      color: white;
+      border-bottom-left-radius: 5px;
       padding-left: 28px;
     }
     .bot .icon { position: absolute; top: 8px; left: 8px; }
+
+    /* === Timestamp — inside bubble, bottom corner, visible on hover only === */
+    .msg-time {
+      position: absolute;
+      bottom: 5px;
+      font-size: 0.65em;
+      font-family: "Comic Sans MS", sans-serif;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .user  .msg-time { right: 10px; color: rgba(255,255,255,0.85); }
+    .bot   .msg-time { left: 28px;  color: rgba(255,255,255,0.75); }
+    .message-wrapper:hover .msg-time { opacity: 1; }
 
     /* === Bot content === */
     .bot-content { color: white; font-family: "Comic Sans MS", sans-serif; }
@@ -96,49 +114,56 @@
     .bot-content ul li::before { content: "•"; color: #ffed4f; font-weight: bold; margin-right: 6px; }
     .bot-content br { display: block; margin: 1px 0; }
 
-    /* === Hover action bar (timestamp + copy + edit) === */
+    /* === Hover action buttons (copy / edit) — appear outside bubble === */
     .msg-actions {
-      display: flex; align-items: center; gap: 6px;
-      opacity: 0; pointer-events: none;
-      transition: opacity 0.2s ease;
-      padding: 2px 4px;
-      font-family: "Comic Sans MS", sans-serif;
+      display: flex; align-items: flex-end; gap: 4px;
+      opacity: 0; transition: opacity 0.2s;
+      padding-bottom: 6px;
     }
-    .message-wrapper.user  .msg-actions { justify-content: flex-end; }
-    .message-wrapper.bot   .msg-actions { justify-content: flex-start; }
-    .message-wrapper:hover .msg-actions { opacity: 1; pointer-events: all; }
+    .message-wrapper:hover .msg-actions { opacity: 1; }
 
-    .msg-time {
-      font-size: 0.7em; color: #3bb2b8;
-    }
+    /* Bot: actions appear to the RIGHT of bubble */
+    .message-wrapper.bot  { flex-direction: row; align-items: flex-end; }
+    .message-wrapper.bot  .msg-actions { order: 2; margin-left: 4px; }
 
-    /* Copy button — Anthropic double-rectangle style */
+    /* User: actions appear to the LEFT of bubble */
+    .message-wrapper.user { flex-direction: row-reverse; align-items: flex-end; }
+    .message-wrapper.user .msg-actions { order: 2; margin-right: 4px; }
+
     .copy-btn, .edit-btn {
       background: none; border: none; cursor: pointer;
-      padding: 2px; line-height: 1; opacity: 0.7;
-      transition: opacity 0.2s, transform 0.15s;
+      padding: 2px; opacity: 0.6; transition: opacity 0.2s, transform 0.15s;
     }
-    .copy-btn:hover, .edit-btn:hover { opacity: 1; transform: scale(1.15); }
+    .copy-btn:hover, .edit-btn:hover { opacity: 1; transform: scale(1.2); }
+    .copy-btn svg, .edit-btn svg { width: 14px; height: 14px; display: block; }
 
-    /* SVG copy icon */
-    .copy-btn svg, .edit-btn svg { width: 14px; height: 14px; }
-
-    /* === Edit area for user messages === */
-    .edit-area {
-      display: none; flex-direction: column; gap: 4px; margin-top: 4px;
+    /* === Inline edit — inside user bubble === */
+    .inline-edit-area {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
     }
-    .edit-area textarea {
-      border-radius: 12px; border: 1px solid #3bb2b8;
-      padding: 6px 10px; font-family: "Comic Sans MS", sans-serif;
-      font-size: 0.9em; resize: none; outline: none; width: 100%;
+    .inline-edit-area textarea {
+      background: rgba(255,255,255,0.25);
+      border: 1px solid rgba(255,255,255,0.5);
+      border-radius: 10px;
+      color: white;
+      font-family: "Comic Sans MS", sans-serif;
+      font-size: 0.95em;
+      padding: 6px 8px;
+      resize: none;
+      outline: none;
+      width: 100%;
     }
-    .edit-area .edit-actions { display: flex; gap: 6px; justify-content: flex-end; }
-    .edit-area button {
-      border: none; border-radius: 10px; padding: 4px 10px;
+    .inline-edit-area textarea::placeholder { color: rgba(255,255,255,0.6); }
+    .inline-edit-area .edit-btns { display: flex; gap: 6px; justify-content: flex-end; }
+    .inline-edit-area button {
+      border: none; border-radius: 10px; padding: 3px 10px;
       font-family: "Comic Sans MS", sans-serif; font-size: 0.8em; cursor: pointer;
     }
-    .edit-save { background: #42e695; color: white; }
-    .edit-cancel { background: #ddd; color: #333; }
+    .edit-save   { background: rgba(255,255,255,0.3); color: white; }
+    .edit-cancel { background: rgba(0,0,0,0.15); color: white; }
 
     /* === Typing indicator === */
     .typing-indicator { display: flex; align-items: center; gap: 8px; color: #ffffffcc; font-family: "Comic Sans MS", sans-serif; font-size: 0.9em; }
@@ -155,12 +180,14 @@
     /* === Input === */
     #chat-input {
       display: flex; padding: 8px; border-top: 1px solid #ccc;
-      background: #f7f7f7; border-bottom-left-radius: 30px; border-bottom-right-radius: 30px;
+      background: #f7f7f7;
+      border-bottom-left-radius: 30px; border-bottom-right-radius: 30px;
     }
     #user-input {
       flex: 1; min-height: 40px; max-height: 120px; resize: none;
       border-radius: 20px; padding: 10px 12px; border: 1px solid #ddd;
-      font-size: 0.95em; font-family: "Comic Sans MS", sans-serif; outline: none; transition: all 0.2s;
+      font-size: 0.95em; font-family: "Comic Sans MS", sans-serif;
+      outline: none; transition: all 0.2s;
     }
     #user-input:focus { border-color: #7873f5; }
     #send-btn {
