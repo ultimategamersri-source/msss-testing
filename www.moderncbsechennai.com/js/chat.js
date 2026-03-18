@@ -1,417 +1,567 @@
-// js/chat.js
-import { API } from "./config.js";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MSSS</title>
 
-window.addEventListener("DOMContentLoaded", () => {
+  <link rel="stylesheet" href="dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="dist/css/bootstrap-theme.min.css">
+  <link rel="stylesheet" href="css/style.css">
 
-  const chatBtn       = document.getElementById("chat-btn");
-  const chatWindow    = document.getElementById("chat-window");
-  const sendBtn       = document.getElementById("send-btn");
-  const userInput     = document.getElementById("user-input");
-  const chatBody      = document.getElementById("chat-body");
-  const header        = document.getElementById("chat-header");
-  const closeChatBtn  = document.getElementById("close-chat-btn");
-  const fullscreenBtn = document.getElementById("fullscreen-btn");
-  const chatBadge     = document.getElementById("chat-badge");
-  // fireworks handled via canvas
+  <script type="module" src="js/config.js"></script>
+  <script src="js/jquery.js" type="text/javascript"></script>
+  <script src="dist/js/bootstrap.min.js"></script>
+  <script type="module" src="js/chat.js"></script>
 
-  if (!chatBtn || !chatWindow || !sendBtn || !userInput || !chatBody || !header) {
-    console.error("[chat.js] Missing DOM elements."); return;
-  }
+  <style>
+    /* === Chat Button === */
+    #chat-btn {
+      position: fixed; bottom: 20px; right: 20px;
+      background: linear-gradient(270deg, #ff6ec4, #7873f5, #42e695, #ffe140, #ff6ec4);
+      background-size: 1000% 1000%;
+      color: white; border: none; border-radius: 50%;
+      width: 65px; height: 65px; font-size: 30px; cursor: pointer;
+      animation: moveGradient 4s linear infinite, pulseGlow 2.5s ease-in-out infinite;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3); z-index: 9999;
+      transition: transform 0.2s;
+    }
+    #chat-btn:hover { transform: scale(1.15); }
+    #chat-btn.wiggle { animation: moveGradient 4s linear infinite, wiggle 0.6s ease-in-out 3; }
 
-  // ---- Session & State ----------------------------------------------------
-  let sessionId   = localStorage.getItem("chat_session") || null;
-  let waiting     = false;
-  let chatOpen    = false;
-  let unreadCount = 0;
-  const WELCOME   = "Hello! Ask me about school. 😊";
-  const chatHistory = [{ type: "bot", text: WELCOME, time: getTime() }];
+    /* Unread badge */
+    #chat-badge {
+      position: fixed; bottom: 58px; right: 16px;
+      background: #ff4757; color: white;
+      border-radius: 50%; width: 20px; height: 20px;
+      font-size: 11px; font-weight: bold;
+      display: none; align-items: center; justify-content: center;
+      z-index: 10000; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      animation: badgePop 0.3s cubic-bezier(0.68,-0.55,0.27,1.55);
+    }
+    #chat-badge.show { display: flex; }
 
-  // ---- Helpers ------------------------------------------------------------
-  function getTime() {
-    const now = new Date();
-    let h = now.getHours();
-    const m = String(now.getMinutes()).padStart(2, "0");
-    const ampm = h >= 12 ? "PM" : "AM";
-    h = h % 12 || 12;
-    return `${h}:${m} ${ampm}`;
-  }
+    @keyframes badgePop {
+      0%   { transform: scale(0); }
+      100% { transform: scale(1); }
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 0 rgba(120,115,245,0.5); }
+      50%       { box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 12px rgba(120,115,245,0); }
+    }
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(0deg); }
+      20%       { transform: rotate(-15deg); }
+      40%       { transform: rotate(15deg); }
+      60%       { transform: rotate(-10deg); }
+      80%       { transform: rotate(10deg); }
+    }
+    @keyframes moveGradient {
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
 
-  function parseMarkdown(text) {
-    let html = text
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/^[•\-]\s+(.+)$/gm, "<li>$1</li>");
-    html = html.split("\n").map(line => {
-      if (line.startsWith("<li>")) return line;
-      if (line.trim() === "") return "<br>";
-      return line + "<br>";
-    }).join("");
-    html = html.replace(/(<li>.*?<\/li>)(?:\s*(<li>.*?<\/li>))*/gs, m => `<ul>${m}</ul>`);
-    html = html.replace(/(<br>){3,}/g, "<br><br>");
-    return html;
-  }
+    /* === Chat Window === */
+    #chat-window {
+      position: fixed; bottom: 100px; right: 20px;
+      width: 350px; min-height: 200px; max-height: 600px;
+      background-color: #fdfdfd; border-radius: 30px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.25);
+      flex-direction: column; z-index: 9999; display: flex;
+      transform-origin: bottom right;
+      transition: none;
+    }
 
-  const COPY_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
-  const COPY_OK  = `<svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="stroke:rgba(255,255,255,0.9)"><polyline points="20 6 9 17 4 12"/></svg>`;
-  const EDIT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+    /* Hidden state */
+    #chat-window.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.3) translateY(40px);
+      transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.34,1.56,0.64,1);
+    }
 
-  // ---- Sparkles & Fireworks ----------------------------------------------
-  const SPARKLE_COLORS = ["#ff6ec4","#7873f5","#42e695","#ffe140","#ff9ff3","#54a0ff","#ff9f43","#ee5a24"];
-  const canvas   = document.getElementById("fireworks-canvas");
-  const ctx      = canvas ? canvas.getContext("2d") : null;
-  let   fwParts  = [];
-  let   fwActive = false;
+    /* Opening animation — shine + expand */
+    #chat-window.opening {
+      animation: shineOpen 0.7s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    }
 
-  function resizeCanvas() {
-    if (!canvas) return;
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
-  }
-  resizeCanvas();
-  window.addEventListener("resize", resizeCanvas);
+    /* Normal close */
+    #chat-window.closing {
+      animation: closeDown 0.3s ease forwards;
+    }
 
-  function launchFirework(x, y) {
-    const count = 120 + Math.floor(Math.random() * 60);
-    for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2;
-      const speed = 4 + Math.random() * 10;
-      fwParts.push({
-        x, y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        alpha: 1,
-        color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
-        size: 3 + Math.random() * 5,
-        decay: 0.012 + Math.random() * 0.01,
+    @keyframes shineOpen {
+      0%   { opacity: 0; transform: scale(0.2) translateY(60px); filter: brightness(2) saturate(2); }
+      40%  { opacity: 1; transform: scale(1.08) translateY(-6px); filter: brightness(1.4) saturate(1.5); }
+      70%  { transform: scale(0.97) translateY(2px); filter: brightness(1.1); }
+      100% { opacity: 1; transform: scale(1) translateY(0); filter: brightness(1) saturate(1); }
+    }
+
+    @keyframes closeDown {
+      0%   { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(0.3) translateY(40px); }
+    }
+
+    /* Sparkles + Fireworks container */
+    #sparkles {
+      position: fixed; bottom: 80px; right: 10px;
+      width: 80px; height: 80px;
+      pointer-events: none; z-index: 9998;
+    }
+    .sparkle {
+      position: absolute;
+      border-radius: 50%;
+      animation: sparkleFly 0.9s ease-out forwards;
+    }
+    @keyframes sparkleFly {
+      0%   { opacity: 1; transform: scale(1) translate(0,0); }
+      100% { opacity: 0; transform: scale(0) translate(var(--tx), var(--ty)); }
+    }
+
+    /* Fireworks canvas — above everything including intro */
+    #fireworks-canvas {
+      position: fixed; inset: 0;
+      width: 100vw; height: 100vh;
+      pointer-events: none; z-index: 999999;
+      display: none;
+    }
+    #fireworks-canvas.active { display: block; }
+
+    /* Scrollbar only when needed */
+    #chat-body { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #c0b4f5 transparent; }
+    #chat-body::-webkit-scrollbar { width: 4px; }
+    #chat-body::-webkit-scrollbar-thumb { background: #c0b4f5; border-radius: 4px; }
+    #chat-body::-webkit-scrollbar-track { background: transparent; }
+
+    /* === Chat Header === */
+    #chat-header {
+      background: linear-gradient(270deg, #ff6ec4, #7873f5, #42e695, #ffe140, #ff6ec4);
+      background-size: 1000% 1000%;
+      animation: moveGradient 10s linear infinite;
+      color: #ffed4f; font-weight: bold;
+      padding: 12px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      font-family: "Comic Sans MS", sans-serif;
+      border-top-left-radius: 30px; border-top-right-radius: 30px;
+      font-size: large; cursor: grab;
+    }
+
+    #close-chat-btn, #fullscreen-btn {
+      background: rgba(255,255,255,0.2); border: none;
+      border-radius: 50%; width: 28px; height: 28px;
+      color: white; font-size: 14px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s; flex-shrink: 0; line-height: 1;
+    }
+    #close-chat-btn:hover, #fullscreen-btn:hover { background: rgba(255,255,255,0.4); }
+    .header-btns { display: flex; gap: 6px; align-items: center; }
+
+    /* Fullscreen mode */
+    #chat-window.fullscreen {
+      width: 100vw !important; height: 100vh !important;
+      max-height: 100vh !important; bottom: 0 !important;
+      right: 0 !important; border-radius: 0 !important;
+    }
+
+    /* === Chat Body === */
+    #chat-body {
+      flex: 1; padding: 12px; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 8px; background: #fff;
+    }
+
+    /* === Bubbles === */
+    .message {
+      padding: 10px 14px 6px 14px;
+      border-radius: 22px;
+      word-wrap: break-word;
+      font-family: "Comic Sans MS", sans-serif;
+      font-size: 1em; line-height: 1.5;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.12);
+      position: relative;
+      display: flex; flex-direction: column;
+      max-width: 80%;
+    }
+    .message.user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, #42e695, #3bb2b8);
+      color: #fff; border-bottom-right-radius: 5px;
+    }
+    .message.bot {
+      align-self: flex-start;
+      background: linear-gradient(135deg, #7873f5, #a98df5);
+      color: white; border-bottom-left-radius: 5px;
+      padding-left: 28px;
+    }
+    .bot .icon { position: absolute; top: 8px; left: 8px; }
+
+    /* === Bot content === */
+    .bot-content { color: white; font-family: "Comic Sans MS", sans-serif; }
+    .bot-content strong { color: #ffed4f; font-weight: bold; }
+    .bot-content ul { margin: 4px 0; padding-left: 16px; list-style: none; }
+    .bot-content ul li::before { content: "•"; color: #ffed4f; font-weight: bold; margin-right: 6px; }
+    .bot-content br { display: block; margin: 1px 0; }
+
+    /* === Bubble footer === */
+    .bubble-footer {
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 5px; margin-top: 4px;
+    }
+    .msg-time {
+      font-size: 0.65em; color: rgba(255,255,255,0.75);
+      font-family: "Comic Sans MS", sans-serif; white-space: nowrap;
+    }
+    .copy-btn, .edit-btn {
+      background: none; border: none; cursor: pointer; padding: 0;
+      display: flex; align-items: center; transition: opacity 0.2s, transform 0.15s;
+    }
+    .copy-btn svg, .edit-btn svg { width: 12px; height: 12px; stroke: rgba(255,255,255,0.75); }
+    .copy-btn:hover svg, .edit-btn:hover svg { stroke: white; }
+    .edit-btn { opacity: 0; transition: opacity 0.2s; }
+    .message.user:hover .edit-btn { opacity: 1; }
+
+    /* === Inline edit === */
+    .inline-edit-area {
+      display: none; flex-direction: column; gap: 6px; margin-top: 6px;
+    }
+    .inline-edit-area textarea {
+      background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.5);
+      border-radius: 10px; color: white;
+      font-family: "Comic Sans MS", sans-serif; font-size: 0.95em;
+      padding: 6px 8px; resize: none; outline: none; width: 100%;
+    }
+    .inline-edit-area textarea::placeholder { color: rgba(255,255,255,0.6); }
+    .inline-edit-area .edit-btns { display: flex; gap: 6px; justify-content: flex-end; }
+    .inline-edit-area button {
+      border: none; border-radius: 10px; padding: 3px 10px;
+      font-family: "Comic Sans MS", sans-serif; font-size: 0.8em; cursor: pointer;
+    }
+    .edit-save   { background: rgba(255,255,255,0.3); color: white; }
+    .edit-cancel { background: rgba(0,0,0,0.15); color: white; }
+
+    /* === Typing indicator === */
+    .typing-indicator { display: flex; align-items: center; gap: 8px; color: #ffffffcc; font-family: "Comic Sans MS", sans-serif; font-size: 0.9em; }
+    .dots { display: flex; gap: 4px; align-items: center; }
+    .dot { width: 7px; height: 7px; background: #ffed4f; border-radius: 50%; animation: bounce 1.2s infinite ease-in-out; }
+    .dot:nth-child(1) { animation-delay: 0s; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30%            { transform: translateY(-6px); }
+    }
+
+    /* === Input === */
+    #chat-input {
+      display: flex; padding: 8px; border-top: 1px solid #ccc;
+      background: #f7f7f7;
+      border-bottom-left-radius: 30px; border-bottom-right-radius: 30px;
+    }
+    #user-input {
+      flex: 1; min-height: 40px; max-height: 120px; resize: none;
+      border-radius: 20px; padding: 10px 12px; border: 1px solid #ddd;
+      font-size: 0.95em; font-family: "Comic Sans MS", sans-serif;
+      outline: none; transition: all 0.2s;
+    }
+    #user-input:focus { border-color: #7873f5; }
+    #send-btn {
+      margin-left: 8px; padding: 10px 14px;
+      background: linear-gradient(135deg, #ff6ec4, #7873f5);
+      color: white; border: none; border-radius: 20px;
+      cursor: pointer; font-weight: bold; transition: 0.2s;
+    }
+    #send-btn:hover { transform: scale(1.1); }
+
+    @media (max-width: 480px) {
+      #chat-window { width: calc(100vw - 20px); right: 10px; bottom: 90px; max-height: 70vh; border-radius: 20px; }
+      #chat-btn { width: 55px; height: 55px; font-size: 24px; bottom: 15px; right: 15px; }
+    }
+
+    /* ========== INTRO SCREEN ========== */
+    #intro-screen {
+      position: fixed; inset: 0; z-index: 99999;
+      background: #0a0a1a;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    #intro-screen.fade-out {
+      animation: introFadeOut 1s ease forwards;
+    }
+    @keyframes introFadeOut {
+      0%   { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(1.05); pointer-events: none; }
+    }
+
+    /* Star field background */
+    #intro-canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+    }
+
+    /* Logo ring */
+    .intro-ring {
+      position: relative; z-index: 2;
+      width: 140px; height: 140px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #7873f5, #ff6ec4, #42e695, #ffe140);
+      display: flex; align-items: center; justify-content: center;
+      animation: ringPulse 2s ease-in-out infinite, ringAppear 0.8s cubic-bezier(0.34,1.56,0.64,1) 0.3s both;
+      box-shadow: 0 0 60px rgba(120,115,245,0.8), 0 0 120px rgba(255,110,196,0.4);
+    }
+    .intro-ring-inner {
+      width: 120px; height: 120px; border-radius: 50%;
+      background: #0a0a1a;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 52px;
+    }
+    @keyframes ringAppear {
+      0%   { opacity: 0; transform: scale(0) rotate(-180deg); }
+      100% { opacity: 1; transform: scale(1) rotate(0deg); }
+    }
+    @keyframes ringPulse {
+      0%,100% { box-shadow: 0 0 60px rgba(120,115,245,0.8), 0 0 120px rgba(255,110,196,0.4); }
+      50%      { box-shadow: 0 0 80px rgba(120,115,245,1),   0 0 160px rgba(255,110,196,0.6); }
+    }
+
+    /* School name */
+    .intro-title {
+      position: relative; z-index: 2;
+      margin-top: 32px;
+      font-family: "Comic Sans MS", sans-serif;
+      font-size: clamp(1.4rem, 5vw, 2.4rem);
+      font-weight: 900;
+      text-align: center;
+      background: linear-gradient(90deg, #ff6ec4, #ffe140, #42e695, #7873f5, #ff6ec4);
+      background-size: 300% 100%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: titleSlide 0.8s cubic-bezier(0.34,1.56,0.64,1) 0.9s both,
+                 shimmer 3s linear 1.7s infinite;
+      letter-spacing: 2px;
+      text-shadow: none;
+    }
+    .intro-subtitle {
+      position: relative; z-index: 2;
+      margin-top: 10px;
+      font-family: "Comic Sans MS", sans-serif;
+      font-size: clamp(0.8rem, 2.5vw, 1rem);
+      color: rgba(255,255,255,0.6);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      animation: titleSlide 0.8s cubic-bezier(0.34,1.56,0.64,1) 1.1s both;
+    }
+    @keyframes titleSlide {
+      0%   { opacity: 0; transform: translateY(40px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes shimmer {
+      0%   { background-position: 0% 50%; }
+      100% { background-position: 300% 50%; }
+    }
+
+    /* Tap to continue */
+    .intro-tap {
+      position: relative; z-index: 2;
+      margin-top: 48px;
+      font-family: "Comic Sans MS", sans-serif;
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.4);
+      animation: tapBlink 1.4s ease-in-out 2s infinite, titleSlide 0.6s ease 2s both;
+      letter-spacing: 2px;
+    }
+    @keyframes tapBlink {
+      0%,100% { opacity: 0.4; }
+      50%      { opacity: 1; color: rgba(255,255,255,0.9); }
+    }
+
+    /* Orbiting dots */
+    .intro-orbit {
+      position: absolute; z-index: 2;
+      width: 220px; height: 220px;
+      animation: orbitSpin 4s linear infinite;
+    }
+    .intro-orbit-dot {
+      position: absolute; border-radius: 50%;
+      width: 10px; height: 10px;
+    }
+    @keyframes orbitSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+  </style>
+</head>
+<body>
+  <!-- ===== INTRO SCREEN ===== -->
+  <div id="intro-screen">
+    <canvas id="intro-canvas"></canvas>
+    <!-- Orbiting dots -->
+    <div class="intro-orbit" id="intro-orbit"></div>
+    <!-- Logo -->
+    <div class="intro-ring">
+      <div class="intro-ring-inner">🎓</div>
+    </div>
+    <!-- Text -->
+    <div class="intro-title">ABC Senior Secondary School</div>
+    <div class="intro-subtitle">Chennai &nbsp;·&nbsp; Est. 2026</div>
+    <div class="intro-tap">✦ tap anywhere to enter ✦</div>
+  </div>
+
+  <!-- ===== INTRO SCRIPT (inline so it runs immediately) ===== -->
+  <script>
+  (function() {
+    const intro   = document.getElementById("intro-screen");
+    const canvas  = document.getElementById("intro-canvas");
+    const orbit   = document.getElementById("intro-orbit");
+    if (!intro || !canvas) return;
+
+    // ---- Orbiting dots ----
+    const ORBIT_COLORS = ["#ff6ec4","#7873f5","#42e695","#ffe140","#54a0ff","#ff9f43"];
+    for (let i = 0; i < 6; i++) {
+      const dot = document.createElement("div");
+      dot.className = "intro-orbit-dot";
+      const angle  = (i / 6) * 360;
+      const rad    = angle * Math.PI / 180;
+      dot.style.cssText = `
+        background: ${ORBIT_COLORS[i]};
+        box-shadow: 0 0 10px ${ORBIT_COLORS[i]};
+        left: calc(50% + ${Math.cos(rad) * 100}px - 5px);
+        top:  calc(50% + ${Math.sin(rad) * 100}px - 5px);
+      `;
+      orbit.appendChild(dot);
+    }
+
+    // ---- Star field canvas ----
+    const ctx = canvas.getContext("2d");
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    resize();
+    window.addEventListener("resize", resize);
+
+    const STARS = Array.from({length: 180}, () => ({
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight,
+      r: Math.random() * 1.8 + 0.2,
+      a: Math.random(),
+      da: (Math.random() - 0.5) * 0.012,
+      vx: (Math.random() - 0.5) * 0.15,
+      vy: (Math.random() - 0.5) * 0.15,
+      color: ORBIT_COLORS[Math.floor(Math.random() * ORBIT_COLORS.length)],
+    }));
+
+    let raf;
+    function drawStars() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      STARS.forEach(s => {
+        s.x = (s.x + s.vx + canvas.width)  % canvas.width;
+        s.y = (s.y + s.vy + canvas.height) % canvas.height;
+        s.a = Math.max(0.1, Math.min(1, s.a + s.da));
+        if (s.a <= 0.1 || s.a >= 1) s.da *= -1;
+        ctx.globalAlpha = s.a;
+        ctx.fillStyle   = s.color;
+        ctx.shadowColor = s.color;
+        ctx.shadowBlur  = 6;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
       });
+      ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+      raf = requestAnimationFrame(drawStars);
     }
-  }
+    drawStars();
 
-  function animateFireworks() {
-    if (!ctx || !canvas) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    fwParts = fwParts.filter(p => p.alpha > 0.01);
-    fwParts.forEach(p => {
-      p.x += p.vx; p.y += p.vy;
-      p.vy += 0.06; // gravity
-      p.vx *= 0.98;
-      p.alpha -= p.decay;
-      ctx.globalAlpha = Math.max(0, p.alpha);
-      ctx.fillStyle   = p.color;
-      ctx.shadowColor = p.color;
-      ctx.shadowBlur  = 12;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fill();
-    });
-    ctx.globalAlpha = 1;
-    if (fwParts.length > 0) requestAnimationFrame(animateFireworks);
-    else {
-      fwActive = false;
-      if (canvas) canvas.classList.remove("active");
-    }
-  }
+    // ---- Web Audio sound ----
+    function playIntroSound() {
+      try {
+        const ac  = new (window.AudioContext || window.webkitAudioContext)();
+        const t   = ac.currentTime;
 
-  function startFireworks() {
-    if (!canvas || !ctx) return;
-    canvas.classList.add("active");
-    fwActive = true;
-    const w = window.innerWidth, h = window.innerHeight;
-    // Launch 6 fireworks at random positions across screen
-    const positions = [
-      [w * 0.15, h * 0.25], [w * 0.5,  h * 0.15], [w * 0.85, h * 0.25],
-      [w * 0.25, h * 0.45], [w * 0.75, h * 0.40], [w * 0.5,  h * 0.30],
-      [w * 0.35, h * 0.20], [w * 0.65, h * 0.20], [w * 0.5,  h * 0.50],
-    ];
-    positions.forEach(([x, y], i) => {
-      setTimeout(() => launchFirework(x, y), i * 150);
-    });
-    animateFireworks();
-    setTimeout(() => { fwParts = []; }, 4000);
-  }
-
-  // shootSparkles replaced by startFireworks()
-
-  // ---- Badge --------------------------------------------------------------
-  function showBadge(n) {
-    chatBadge.textContent = n > 9 ? "9+" : n;
-    chatBadge.classList.add("show");
-  }
-  function clearBadge() {
-    unreadCount = 0;
-    chatBadge.classList.remove("show");
-  }
-
-  // ---- Open / Close -------------------------------------------------------
-  function openChat(isFirstVisit = false) {
-    chatOpen = true;
-    clearBadge();
-
-    // Step 1: remove hidden — let browser register the change
-    chatWindow.classList.remove("hidden", "closing", "opening");
-    chatWindow.style.display = "flex";
-
-    // Step 2: one rAF so browser processes display:flex before animating
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        chatWindow.classList.add("opening");
-        if (isFirstVisit) startFireworks();
-        chatWindow.addEventListener("animationend", () => {
-          chatWindow.classList.remove("opening");
-        }, { once: true });
-      });
-    });
-
-    autoResizeTextarea();
-    userInput.focus();
-  }
-
-  function closeChat() {
-    chatOpen = false;
-    chatWindow.classList.add("closing");
-    chatWindow.addEventListener("animationend", () => {
-      chatWindow.classList.remove("closing");
-      chatWindow.classList.add("hidden");
-    }, { once: true });
-  }
-
-  // ---- Fullscreen ---------------------------------------------------------
-  let isFullscreen = false;
-  function toggleFullscreen() {
-    isFullscreen = !isFullscreen;
-    if (isFullscreen) {
-      chatWindow.classList.add("fullscreen");
-      fullscreenBtn.textContent = "⛶"; // or use ⊡
-      fullscreenBtn.title = "Exit fullscreen";
-    } else {
-      chatWindow.classList.remove("fullscreen");
-      fullscreenBtn.textContent = "⛶";
-      fullscreenBtn.title = "Fullscreen";
-    }
-  }
-
-  // First visit — auto open with sparkle animation after short delay
-  const hasVisited = localStorage.getItem("brightly_visited");
-  if (!hasVisited) {
-    localStorage.setItem("brightly_visited", "1");
-    setTimeout(() => openChat(true), 800);
-  } else {
-    chatWindow.classList.add("hidden");
-  }
-
-  // ---- Button wiggle every 30s when chat is closed ------------------------
-  setInterval(() => {
-    if (!chatOpen) {
-      chatBtn.classList.add("wiggle");
-      chatBtn.addEventListener("animationend", () => {
-        chatBtn.classList.remove("wiggle");
-      }, { once: true });
-    }
-  }, 30000);
-
-  // ---- Events -------------------------------------------------------------
-  chatBtn.addEventListener("click", () => {
-    chatOpen ? closeChat() : openChat(false);
-  });
-  closeChatBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    closeChat();
-  });
-  if (fullscreenBtn) fullscreenBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(); });
-
-  // ---- Draggable ----------------------------------------------------------
-  let isDragging = false, offsetX = 0, offsetY = 0;
-  header.addEventListener("mousedown", (e) => {
-    if (e.target === closeChatBtn || e.target === fullscreenBtn) return;
-    isDragging = true;
-    offsetX = e.clientX - chatWindow.offsetLeft;
-    offsetY = e.clientY - chatWindow.offsetTop;
-    header.style.cursor = "grabbing";
-  });
-  document.addEventListener("mousemove", (e) => {
-    if (isDragging) {
-      chatWindow.style.left = e.clientX - offsetX + "px";
-      chatWindow.style.top  = e.clientY - offsetY + "px";
-    }
-  });
-  document.addEventListener("mouseup", () => { isDragging = false; header.style.cursor = "grab"; });
-
-  // ---- Render -------------------------------------------------------------
-  function autoResizeTextarea() {
-    userInput.style.height = "auto";
-    userInput.style.height = Math.min(userInput.scrollHeight, 120) + "px";
-  }
-
-  function renderMessages() {
-    chatBody.innerHTML = "";
-    chatHistory.forEach((msg, idx) => {
-      const bubble = document.createElement("div");
-      bubble.className = `message ${msg.type}`;
-
-      if (msg.type === "bot") {
-        const icon = document.createElement("span");
-        icon.className = "icon"; icon.textContent = "💡";
-        bubble.appendChild(icon);
-
-        if (msg.typing) {
-          bubble.innerHTML += `<div class="typing-indicator"><span>Thinking...</span><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`;
-        } else {
-          const content = document.createElement("div");
-          content.className = "bot-content";
-          content.innerHTML = parseMarkdown(msg.text);
-          bubble.appendChild(content);
-
-          const footer = document.createElement("div");
-          footer.className = "bubble-footer";
-          const ts = document.createElement("span");
-          ts.className = "msg-time"; ts.textContent = msg.time || "";
-          footer.appendChild(ts);
-
-          if (idx > 0) {
-            const copyBtn = document.createElement("button");
-            copyBtn.className = "copy-btn"; copyBtn.title = "Copy";
-            copyBtn.innerHTML = COPY_SVG;
-            copyBtn.addEventListener("click", () => {
-              navigator.clipboard.writeText(msg.text).then(() => {
-                copyBtn.innerHTML = COPY_OK;
-                setTimeout(() => copyBtn.innerHTML = COPY_SVG, 2000);
-              });
-            });
-            footer.appendChild(copyBtn);
-          }
-          bubble.appendChild(footer);
+        function note(freq, start, dur, vol=0.3) {
+          const osc  = ac.createOscillator();
+          const gain = ac.createGain();
+          osc.connect(gain); gain.connect(ac.destination);
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(freq, t + start);
+          gain.gain.setValueAtTime(0, t + start);
+          gain.gain.linearRampToValueAtTime(vol, t + start + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + start + dur);
+          osc.start(t + start);
+          osc.stop(t + start + dur + 0.1);
         }
 
-      } else {
-        const textSpan = document.createElement("span");
-        textSpan.className = "user-text"; textSpan.textContent = msg.text;
-        bubble.appendChild(textSpan);
+        // Rising majestic chord sequence — Nintendo-style
+        note(261.6, 0.0,  0.4, 0.25); // C4
+        note(329.6, 0.15, 0.4, 0.25); // E4
+        note(392.0, 0.3,  0.4, 0.25); // G4
+        note(523.3, 0.5,  0.6, 0.3);  // C5
+        note(659.3, 0.7,  0.5, 0.25); // E5
+        note(783.9, 0.9,  0.8, 0.3);  // G5 — hold
+        note(1046.5,1.1,  1.0, 0.2);  // C6 — sparkle top
 
-        const editArea = document.createElement("div");
-        editArea.className = "inline-edit-area";
-        editArea.innerHTML = `<textarea rows="2">${msg.text}</textarea><div class="edit-btns"><button class="edit-cancel">Cancel</button><button class="edit-save">Send ✓</button></div>`;
-        bubble.appendChild(editArea);
+        // Add shimmer — high frequency sweep
+        const sw   = ac.createOscillator();
+        const swg  = ac.createGain();
+        sw.connect(swg); swg.connect(ac.destination);
+        sw.type = "triangle";
+        sw.frequency.setValueAtTime(1200, t + 0.8);
+        sw.frequency.exponentialRampToValueAtTime(2400, t + 1.6);
+        swg.gain.setValueAtTime(0.08, t + 0.8);
+        swg.gain.exponentialRampToValueAtTime(0.001, t + 2.0);
+        sw.start(t + 0.8); sw.stop(t + 2.1);
 
-        const footer = document.createElement("div");
-        footer.className = "bubble-footer";
-        const ts = document.createElement("span");
-        ts.className = "msg-time"; ts.textContent = msg.time || "";
-        footer.appendChild(ts);
-
-        const editBtn = document.createElement("button");
-        editBtn.className = "edit-btn"; editBtn.title = "Edit";
-        editBtn.innerHTML = EDIT_SVG;
-        editBtn.addEventListener("click", () => {
-          const isOpen = editArea.style.display === "flex";
-          editArea.style.display = isOpen ? "none" : "flex";
-          textSpan.style.display = isOpen ? "" : "none";
-          if (!isOpen) { const ta = editArea.querySelector("textarea"); ta.value = msg.text; ta.focus(); }
-        });
-        footer.appendChild(editBtn);
-        bubble.appendChild(footer);
-
-        editArea.querySelector(".edit-cancel").addEventListener("click", () => {
-          editArea.style.display = "none"; textSpan.style.display = "";
-        });
-        editArea.querySelector(".edit-save").addEventListener("click", async () => {
-          const ta = editArea.querySelector("textarea");
-          const newText = ta.value.trim();
-          if (!newText || waiting) return;
-          msg.text = newText; msg.time = getTime();
-          chatHistory.splice(idx + 1);
-          chatHistory.push({ type: "bot", text: "", time: null, typing: true });
-          renderMessages(); waiting = true; sendBtn.disabled = true;
-          try {
-            const answer = await postToAsk(newText);
-            chatHistory.pop();
-            chatHistory.push({ type: "bot", text: answer, time: getTime() });
-          } catch {
-            chatHistory.pop();
-            chatHistory.push({ type: "bot", text: "⚠️ Error reaching server.", time: getTime() });
-          } finally { waiting = false; sendBtn.disabled = false; renderMessages(); }
-        });
-      }
-
-      chatBody.appendChild(bubble);
-    });
-    chatBody.scrollTop = chatBody.scrollHeight;
-  }
-
-  // ---- Session end --------------------------------------------------------
-  function sendSessionEnd() {
-    if (!sessionId) return;
-    navigator.sendBeacon(`${API}/session/end`, new Blob([JSON.stringify({ session_id: sessionId })], { type: "application/json" }));
-    localStorage.removeItem("chat_session"); sessionId = null;
-  }
-  window.addEventListener("beforeunload", sendSessionEnd);
-
-  // ---- Rate limit (client-side soft limit) --------------------------------
-  const msgTimestamps = [];
-  function isRateLimited() {
-    const now   = Date.now();
-    const limit = msgTimestamps.filter(t => now - t < 60000);
-    msgTimestamps.length = 0;
-    limit.forEach(t => msgTimestamps.push(t));
-    if (msgTimestamps.length >= 20) return true;
-    msgTimestamps.push(now);
-    return false;
-  }
-
-  // ---- API ----------------------------------------------------------------
-  async function postToAsk(question) {
-    const res = await fetch(`${API}/ask`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, session_id: sessionId }),
-    });
-    if (!res.ok) throw new Error(`${res.status}`);
-    const data = await res.json();
-    if (data.session_id)          { sessionId = data.session_id; localStorage.setItem("chat_session", sessionId); }
-    if (data.session_id === null) { localStorage.removeItem("chat_session"); sessionId = null; }
-    return data.answer || "I couldn't find an answer.";
-  }
-
-  // ---- Send ---------------------------------------------------------------
-  async function handleSend() {
-    if (waiting) return;
-    const text = (userInput.value || "").trim();
-    if (!text) return;
-
-    if (isRateLimited()) {
-      chatHistory.push({ type: "bot", text: "⏳ You're sending too fast! Please wait a moment. 😊", time: getTime() });
-      renderMessages(); return;
+      } catch(e) { console.log("Audio not available:", e); }
     }
 
-    chatHistory.push({ type: "user", text, time: getTime() });
-    renderMessages();
-    userInput.value = ""; autoResizeTextarea();
+    // ---- Dismiss ----
+    function dismiss() {
+      cancelAnimationFrame(raf);
+      intro.classList.add("fade-out");
+      intro.addEventListener("animationend", () => {
+        intro.style.display = "none";
+        // Signal to chat.js that intro is done
+        window.dispatchEvent(new CustomEvent("introDone"));
+      }, { once: true });
+    }
 
-    chatHistory.push({ type: "bot", text: "", time: null, typing: true });
-    renderMessages(); waiting = true; sendBtn.disabled = true;
+    // Auto dismiss after 4.5s, or on tap
+    const autoTimer = setTimeout(dismiss, 4500);
+    intro.addEventListener("click", () => { clearTimeout(autoTimer); dismiss(); });
 
-    try {
-      const answer = await postToAsk(text);
-      chatHistory.pop();
-      chatHistory.push({ type: "bot", text: answer, time: getTime() });
+    // Play sound on first interaction (browser policy) or auto after short delay
+    let soundPlayed = false;
+    function trySound() {
+      if (!soundPlayed) { soundPlayed = true; playIntroSound(); }
+    }
+    document.addEventListener("click",     trySound, { once: true });
+    document.addEventListener("touchstart", trySound, { once: true });
+    // Try auto after 200ms (works on some browsers without interaction)
+    setTimeout(() => { try { playIntroSound(); soundPlayed = true; } catch(e){} }, 200);
+  })();
+  </script>
 
-      // Unread badge when chat is closed
-      if (!chatOpen) {
-        unreadCount++;
-        showBadge(unreadCount);
-      }
-    } catch {
-      chatHistory.pop();
-      chatHistory.push({ type: "bot", text: "⚠️ Having trouble reaching the server. Please try again.", time: getTime() });
-    } finally { waiting = false; sendBtn.disabled = false; renderMessages(); }
-  }
+  <button id="chat-btn">💬</button>
+  <div id="chat-badge"></div>
+  <canvas id="fireworks-canvas"></canvas>
 
-  sendBtn.addEventListener("click", handleSend);
-  userInput.addEventListener("input", autoResizeTextarea);
-  userInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
-  });
+  <div id="chat-window" class="hidden">
+    <div id="chat-header">
+      <span>✨ Brightly (School Assistant)</span>
+      <div class="header-btns">
+        <button id="fullscreen-btn" title="Fullscreen">⛶</button>
+        <button id="close-chat-btn" title="Close">✕</button>
+      </div>
+    </div>
+    <div id="chat-body"></div>
+    <div id="chat-input">
+      <textarea id="user-input" placeholder="Ask something..."></textarea>
+      <button id="send-btn">Send</button>
+    </div>
+  </div>
 
-  renderMessages();
-  autoResizeTextarea();
-  fetch(`${API}/health`).then(r => r.json()).then(d => console.log("[chat.js] health:", d)).catch(() => {});
-});
+  <div class="container-fluid">
+    <div class="jumbotron">
+      <h2 align="center">ABC Senior Secondary School</h2>
+    </div>
+  </div>
+</body>
+</html>
