@@ -104,7 +104,7 @@
       100% { opacity: 0; transform: scale(0.3) translateY(40px); }
     }
 
-    /* Sparkles container */
+    /* Sparkles + Fireworks container */
     #sparkles {
       position: fixed; bottom: 80px; right: 10px;
       width: 80px; height: 80px;
@@ -112,14 +112,21 @@
     }
     .sparkle {
       position: absolute;
-      width: 8px; height: 8px;
       border-radius: 50%;
-      animation: sparkleFly 0.8s ease-out forwards;
+      animation: sparkleFly 0.9s ease-out forwards;
     }
     @keyframes sparkleFly {
       0%   { opacity: 1; transform: scale(1) translate(0,0); }
       100% { opacity: 0; transform: scale(0) translate(var(--tx), var(--ty)); }
     }
+
+    /* Fireworks canvas */
+    #fireworks-canvas {
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 9997;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #fireworks-canvas.active { opacity: 1; }
 
     /* === Chat Header === */
     #chat-header {
@@ -261,6 +268,7 @@
   <button id="chat-btn">💬</button>
   <div id="chat-badge"></div>
   <div id="sparkles"></div>
+  <canvas id="fireworks-canvas"></canvas>
 
   <div id="chat-window" class="hidden">
     <div id="chat-header">
