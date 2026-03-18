@@ -10,6 +10,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const chatBody      = document.getElementById("chat-body");
   const header        = document.getElementById("chat-header");
   const closeChatBtn  = document.getElementById("close-chat-btn");
+  const fullscreenBtn = document.getElementById("fullscreen-btn");
   const chatBadge     = document.getElementById("chat-badge");
   // fireworks handled via canvas
 
@@ -145,23 +146,21 @@ window.addEventListener("DOMContentLoaded", () => {
   function openChat(isFirstVisit = false) {
     chatOpen = true;
     clearBadge();
-    chatWindow.classList.remove("hidden", "closing");
 
-    if (isFirstVisit) {
-      // Sparkles from button + full fireworks across screen
-      shootSparkles();
-      startFireworks();
-      chatWindow.classList.add("opening");
-      chatWindow.addEventListener("animationend", () => {
-        chatWindow.classList.remove("opening");
-      }, { once: true });
-    } else {
-      // Normal open — quick spring in
-      chatWindow.classList.add("opening");
-      chatWindow.addEventListener("animationend", () => {
-        chatWindow.classList.remove("opening");
-      }, { once: true });
-    }
+    // Step 1: remove hidden — let browser register the change
+    chatWindow.classList.remove("hidden", "closing", "opening");
+    chatWindow.style.display = "flex";
+
+    // Step 2: one rAF so browser processes display:flex before animating
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        chatWindow.classList.add("opening");
+        if (isFirstVisit) startFireworks();
+        chatWindow.addEventListener("animationend", () => {
+          chatWindow.classList.remove("opening");
+        }, { once: true });
+      });
+    });
 
     autoResizeTextarea();
     userInput.focus();
@@ -174,6 +173,21 @@ window.addEventListener("DOMContentLoaded", () => {
       chatWindow.classList.remove("closing");
       chatWindow.classList.add("hidden");
     }, { once: true });
+  }
+
+  // ---- Fullscreen ---------------------------------------------------------
+  let isFullscreen = false;
+  function toggleFullscreen() {
+    isFullscreen = !isFullscreen;
+    if (isFullscreen) {
+      chatWindow.classList.add("fullscreen");
+      fullscreenBtn.textContent = "⛶"; // or use ⊡
+      fullscreenBtn.title = "Exit fullscreen";
+    } else {
+      chatWindow.classList.remove("fullscreen");
+      fullscreenBtn.textContent = "⛶";
+      fullscreenBtn.title = "Fullscreen";
+    }
   }
 
   // First visit — auto open with sparkle animation after short delay
@@ -203,11 +217,12 @@ window.addEventListener("DOMContentLoaded", () => {
     e.stopPropagation();
     closeChat();
   });
+  if (fullscreenBtn) fullscreenBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleFullscreen(); });
 
   // ---- Draggable ----------------------------------------------------------
   let isDragging = false, offsetX = 0, offsetY = 0;
   header.addEventListener("mousedown", (e) => {
-    if (e.target === closeChatBtn) return;
+    if (e.target === closeChatBtn || e.target === fullscreenBtn) return;
     isDragging = true;
     offsetX = e.clientX - chatWindow.offsetLeft;
     offsetY = e.clientY - chatWindow.offsetTop;
