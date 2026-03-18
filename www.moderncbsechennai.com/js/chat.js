@@ -3,12 +3,12 @@ import { API } from "./config.js";
 
 window.addEventListener("DOMContentLoaded", () => {
 
-  const chatBtn   = document.getElementById("chat-btn");
-  const chatWindow= document.getElementById("chat-window");
-  const sendBtn   = document.getElementById("send-btn");
-  const userInput = document.getElementById("user-input");
-  const chatBody  = document.getElementById("chat-body");
-  const header    = document.getElementById("chat-header");
+  const chatBtn    = document.getElementById("chat-btn");
+  const chatWindow = document.getElementById("chat-window");
+  const sendBtn    = document.getElementById("send-btn");
+  const userInput  = document.getElementById("user-input");
+  const chatBody   = document.getElementById("chat-body");
+  const header     = document.getElementById("chat-header");
 
   if (!chatBtn || !chatWindow || !sendBtn || !userInput || !chatBody || !header) {
     console.error("[chat.js] Missing DOM elements."); return;
@@ -48,11 +48,14 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   // SVG icons
-  const COPY_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="#3bb2b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+  const COPY_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="9" y="9" width="13" height="13" rx="2"/>
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
   </svg>`;
-
-  const EDIT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="#3bb2b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  const COPY_OK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="#42e695" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="20 6 9 17 4 12"/>
+  </svg>`;
+  const EDIT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
   </svg>`;
@@ -65,11 +68,16 @@ window.addEventListener("DOMContentLoaded", () => {
       const wrapper = document.createElement("div");
       wrapper.className = `message-wrapper ${msg.type}`;
 
+      // --- Action buttons (outside bubble) ---
+      const actions = document.createElement("div");
+      actions.className = "msg-actions";
+
       // --- Bubble ---
       const bubble = document.createElement("div");
       bubble.className = `message ${msg.type}`;
 
       if (msg.type === "bot") {
+        // Icon
         const icon = document.createElement("span");
         icon.className = "icon"; icon.textContent = "💡";
         bubble.appendChild(icon);
@@ -77,131 +85,114 @@ window.addEventListener("DOMContentLoaded", () => {
         if (msg.typing) {
           bubble.innerHTML += `<div class="typing-indicator"><span>Thinking...</span><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`;
         } else {
+          // Content
           const content = document.createElement("div");
           content.className = "bot-content";
           content.innerHTML = parseMarkdown(msg.text);
           bubble.appendChild(content);
+
+          // Timestamp inside bubble
+          const ts = document.createElement("span");
+          ts.className = "msg-time"; ts.textContent = msg.time || "";
+          bubble.appendChild(ts);
+
+          // Copy button in actions
+          if (idx > 0) {
+            const copyBtn = document.createElement("button");
+            copyBtn.className = "copy-btn"; copyBtn.title = "Copy";
+            copyBtn.innerHTML = COPY_SVG;
+            copyBtn.addEventListener("click", () => {
+              navigator.clipboard.writeText(msg.text).then(() => {
+                copyBtn.innerHTML = COPY_OK_SVG;
+                setTimeout(() => copyBtn.innerHTML = COPY_SVG, 2000);
+              });
+            });
+            actions.appendChild(copyBtn);
+          }
         }
+
       } else {
-        // User message text
-        const textNode = document.createElement("span");
-        textNode.textContent = msg.text;
-        bubble.appendChild(textNode);
-      }
+        // User bubble — text span (hidden when editing)
+        const textSpan = document.createElement("span");
+        textSpan.className = "user-text";
+        textSpan.textContent = msg.text;
+        bubble.appendChild(textSpan);
 
-      wrapper.appendChild(bubble);
+        // Timestamp inside bubble
+        const ts = document.createElement("span");
+        ts.className = "msg-time"; ts.textContent = msg.time || "";
+        bubble.appendChild(ts);
 
-      // --- Edit area (user messages only) ---
-      if (msg.type === "user" && !msg.typing) {
+        // Inline edit area — lives INSIDE the bubble, styled to match
         const editArea = document.createElement("div");
-        editArea.className = "edit-area";
+        editArea.className = "inline-edit-area";
         editArea.innerHTML = `
           <textarea rows="2">${msg.text}</textarea>
-          <div class="edit-actions">
+          <div class="edit-btns">
             <button class="edit-cancel">Cancel</button>
             <button class="edit-save">Send ✓</button>
           </div>`;
-        wrapper.appendChild(editArea);
-      }
+        bubble.appendChild(editArea);
 
-      // --- Hover action bar ---
-      if (!msg.typing) {
-        const actions = document.createElement("div");
-        actions.className = "msg-actions";
-
-        // Timestamp always shown in actions bar
-        const ts = document.createElement("span");
-        ts.className = "msg-time";
-        ts.textContent = msg.time || "";
-
-        if (msg.type === "bot" && idx > 0) {
-          // Copy button for bot
-          const copyBtn = document.createElement("button");
-          copyBtn.className = "copy-btn";
-          copyBtn.title = "Copy";
-          copyBtn.innerHTML = COPY_ICON;
-          copyBtn.addEventListener("click", () => {
-            navigator.clipboard.writeText(msg.text).then(() => {
-              copyBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="#42e695" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-              setTimeout(() => { copyBtn.innerHTML = COPY_ICON; }, 2000);
-            });
-          });
-          actions.appendChild(ts);
-          actions.appendChild(copyBtn);
-        } else if (msg.type === "user") {
-          // Edit button for user
-          const editBtn = document.createElement("button");
-          editBtn.className = "edit-btn";
-          editBtn.title = "Edit";
-          editBtn.innerHTML = EDIT_ICON;
-          editBtn.addEventListener("click", () => {
-            const editArea = wrapper.querySelector(".edit-area");
-            editArea.style.display = editArea.style.display === "flex" ? "none" : "flex";
+        // Edit button in actions
+        const editBtn = document.createElement("button");
+        editBtn.className = "edit-btn"; editBtn.title = "Edit";
+        editBtn.innerHTML = EDIT_SVG;
+        editBtn.addEventListener("click", () => {
+          const isEditing = editArea.style.display === "flex";
+          if (isEditing) {
+            editArea.style.display = "none";
+            textSpan.style.display = "";
+          } else {
+            editArea.style.display = "flex";
+            textSpan.style.display = "none";
             const ta = editArea.querySelector("textarea");
-            ta.value = msg.text;
-            ta.focus();
-          });
+            ta.value = msg.text; ta.focus();
+          }
+        });
 
-          // Save edit
-          const saveBtn = wrapper.querySelector ? null : null;
-          actions.appendChild(editBtn);
-          actions.appendChild(ts);
-        } else {
-          actions.appendChild(ts);
-        }
+        // Cancel
+        editArea.querySelector(".edit-cancel").addEventListener("click", () => {
+          editArea.style.display = "none";
+          textSpan.style.display = "";
+        });
 
-        wrapper.appendChild(actions);
+        // Save — resend from this point
+        editArea.querySelector(".edit-save").addEventListener("click", async () => {
+          const ta = editArea.querySelector("textarea");
+          const newText = ta.value.trim();
+          if (!newText || waiting) return;
+
+          // Update history: edit this message, remove everything after
+          msg.text = newText;
+          msg.time = getTime();
+          chatHistory.splice(idx + 1);
+
+          // Resend
+          chatHistory.push({ type: "bot", text: "", time: null, typing: true });
+          renderMessages();
+          waiting = true; sendBtn.disabled = true;
+
+          try {
+            const answer = await postToAsk(newText);
+            chatHistory.pop();
+            chatHistory.push({ type: "bot", text: answer, time: getTime() });
+          } catch {
+            chatHistory.pop();
+            chatHistory.push({ type: "bot", text: "⚠️ Error reaching server.", time: getTime() });
+          } finally {
+            waiting = false; sendBtn.disabled = false;
+            renderMessages();
+          }
+        });
+
+        actions.appendChild(editBtn);
       }
 
+      // Assemble wrapper
+      wrapper.appendChild(bubble);
+      if (!msg.typing) wrapper.appendChild(actions);
       chatBody.appendChild(wrapper);
-    });
-
-    // Wire edit save/cancel after render
-    chatBody.querySelectorAll(".message-wrapper.user").forEach((wrapper, wIdx) => {
-      const editArea  = wrapper.querySelector(".edit-area");
-      if (!editArea) return;
-      const saveBtn   = editArea.querySelector(".edit-save");
-      const cancelBtn = editArea.querySelector(".edit-cancel");
-      const ta        = editArea.querySelector("textarea");
-
-      // Find actual index in chatHistory for user messages
-      const userMsgs = chatHistory.map((m, i) => ({ m, i })).filter(x => x.m.type === "user");
-      const histIdx  = userMsgs[wIdx]?.i;
-
-      cancelBtn.addEventListener("click", () => {
-        editArea.style.display = "none";
-      });
-
-      saveBtn.addEventListener("click", async () => {
-        const newText = ta.value.trim();
-        if (!newText || waiting) return;
-        editArea.style.display = "none";
-
-        // Update the message in history and remove all messages after it
-        if (histIdx !== undefined) {
-          chatHistory[histIdx].text = newText;
-          chatHistory[histIdx].time = getTime();
-          chatHistory.splice(histIdx + 1); // remove everything after edited message
-        }
-
-        // Re-send from edited message
-        chatHistory.push({ type: "bot", text: "", time: null, typing: true });
-        renderMessages();
-        waiting = true; sendBtn.disabled = true;
-
-        try {
-          const answer = await postToAsk(newText);
-          chatHistory.pop();
-          chatHistory.push({ type: "bot", text: answer, time: getTime() });
-          renderMessages();
-        } catch (e) {
-          chatHistory.pop();
-          chatHistory.push({ type: "bot", text: "⚠️ Error reaching server.", time: getTime() });
-          renderMessages();
-        } finally {
-          waiting = false; sendBtn.disabled = false;
-        }
-      });
     });
 
     chatBody.scrollTop = chatBody.scrollHeight;
@@ -242,8 +233,7 @@ window.addEventListener("DOMContentLoaded", () => {
   function sendSessionEnd() {
     if (!sessionId) return;
     navigator.sendBeacon(`${API}/session/end`, new Blob([JSON.stringify({ session_id: sessionId })], { type: "application/json" }));
-    localStorage.removeItem("chat_session");
-    sessionId = null;
+    localStorage.removeItem("chat_session"); sessionId = null;
   }
   window.addEventListener("beforeunload", sendSessionEnd);
 
@@ -256,7 +246,7 @@ window.addEventListener("DOMContentLoaded", () => {
     });
     if (!res.ok) throw new Error(`${res.status}`);
     const data = await res.json();
-    if (data.session_id) { sessionId = data.session_id; localStorage.setItem("chat_session", sessionId); }
+    if (data.session_id)      { sessionId = data.session_id; localStorage.setItem("chat_session", sessionId); }
     if (data.session_id === null) { localStorage.removeItem("chat_session"); sessionId = null; }
     return data.answer || "I couldn't find an answer.";
   }
@@ -279,13 +269,12 @@ window.addEventListener("DOMContentLoaded", () => {
       const answer = await postToAsk(text);
       chatHistory.pop();
       chatHistory.push({ type: "bot", text: answer, time: getTime() });
-      renderMessages();
-    } catch (e) {
+    } catch {
       chatHistory.pop();
       chatHistory.push({ type: "bot", text: "⚠️ Having trouble reaching the server. Please try again.", time: getTime() });
-      renderMessages();
     } finally {
       waiting = false; sendBtn.disabled = false;
+      renderMessages();
     }
   }
 
@@ -297,9 +286,5 @@ window.addEventListener("DOMContentLoaded", () => {
 
   renderMessages();
   autoResizeTextarea();
-
-  fetch(`${API}/health`)
-    .then(r => r.json())
-    .then(d => console.log("[chat.js] Backend health:", d))
-    .catch(() => console.warn("[chat.js] Backend not reachable"));
+  fetch(`${API}/health`).then(r => r.json()).then(d => console.log("[chat.js] health:", d)).catch(() => {});
 });
