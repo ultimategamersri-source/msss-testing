@@ -16,49 +16,140 @@
   <script type="module" src="js/chat.js"></script>
 
   <style>
+    /* === Chat Button === */
     #chat-btn {
       position: fixed; bottom: 20px; right: 20px;
       background: linear-gradient(270deg, #ff6ec4, #7873f5, #42e695, #ffe140, #ff6ec4);
       background-size: 1000% 1000%;
       color: white; border: none; border-radius: 50%;
       width: 65px; height: 65px; font-size: 30px; cursor: pointer;
-      animation: moveGradient 8s linear infinite;
+      animation: moveGradient 4s linear infinite, pulseGlow 2.5s ease-in-out infinite;
       box-shadow: 0 4px 8px rgba(0,0,0,0.3); z-index: 9999;
+      transition: transform 0.2s;
     }
+    #chat-btn:hover { transform: scale(1.15); }
+    #chat-btn.wiggle { animation: moveGradient 4s linear infinite, wiggle 0.6s ease-in-out 3; }
 
-    #chat-window {
-      position: fixed; bottom: 100px; right: 20px;
-      width: 350px; min-height: 200px; max-height: 600px;
-      background-color: #fdfdfd; border-radius: 30px;
-      box-shadow: 0 8px 25px rgba(0,0,0,0.25);
-      flex-direction: column; z-index: 9999; display: flex;
-      transition: opacity 0.3s ease, transform 0.3s ease;
+    /* Unread badge */
+    #chat-badge {
+      position: fixed; bottom: 58px; right: 16px;
+      background: #ff4757; color: white;
+      border-radius: 50%; width: 20px; height: 20px;
+      font-size: 11px; font-weight: bold;
+      display: none; align-items: center; justify-content: center;
+      z-index: 10000; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      animation: badgePop 0.3s cubic-bezier(0.68,-0.55,0.27,1.55);
     }
-    #chat-window.hidden { opacity: 0; pointer-events: none; transform: translateY(20px); }
+    #chat-badge.show { display: flex; }
 
-    #chat-header {
-      background: linear-gradient(270deg, #ff6ec4, #7873f5, #42e695, #ffe140, #ff6ec4);
-      background-size: 1000% 1000%;
-      animation: moveGradient 10s linear infinite;
-      color: #ffed4f; font-weight: bold;
-      padding: 14px; text-align: center;
-      font-family: "Comic Sans MS", sans-serif;
-      border-top-left-radius: 30px; border-top-right-radius: 30px;
-      font-size: large; cursor: grab;
+    @keyframes badgePop {
+      0%   { transform: scale(0); }
+      100% { transform: scale(1); }
     }
-
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 0 rgba(120,115,245,0.5); }
+      50%       { box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 0 0 12px rgba(120,115,245,0); }
+    }
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(0deg); }
+      20%       { transform: rotate(-15deg); }
+      40%       { transform: rotate(15deg); }
+      60%       { transform: rotate(-10deg); }
+      80%       { transform: rotate(10deg); }
+    }
     @keyframes moveGradient {
       0%   { background-position: 0% 50%; }
       50%  { background-position: 100% 50%; }
       100% { background-position: 0% 50%; }
     }
 
+    /* === Chat Window === */
+    #chat-window {
+      position: fixed; bottom: 100px; right: 20px;
+      width: 350px; min-height: 200px; max-height: 600px;
+      background-color: #fdfdfd; border-radius: 30px;
+      box-shadow: 0 8px 25px rgba(0,0,0,0.25);
+      flex-direction: column; z-index: 9999; display: flex;
+      transform-origin: bottom right;
+      transition: none;
+    }
+
+    /* Hidden state */
+    #chat-window.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.3) translateY(40px);
+      transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.34,1.56,0.64,1);
+    }
+
+    /* Opening animation — shine + expand */
+    #chat-window.opening {
+      animation: shineOpen 0.7s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    }
+
+    /* Normal close */
+    #chat-window.closing {
+      animation: closeDown 0.3s ease forwards;
+    }
+
+    @keyframes shineOpen {
+      0%   { opacity: 0; transform: scale(0.2) translateY(60px); filter: brightness(2) saturate(2); }
+      40%  { opacity: 1; transform: scale(1.08) translateY(-6px); filter: brightness(1.4) saturate(1.5); }
+      70%  { transform: scale(0.97) translateY(2px); filter: brightness(1.1); }
+      100% { opacity: 1; transform: scale(1) translateY(0); filter: brightness(1) saturate(1); }
+    }
+
+    @keyframes closeDown {
+      0%   { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(0.3) translateY(40px); }
+    }
+
+    /* Sparkles container */
+    #sparkles {
+      position: fixed; bottom: 80px; right: 10px;
+      width: 80px; height: 80px;
+      pointer-events: none; z-index: 9998;
+    }
+    .sparkle {
+      position: absolute;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      animation: sparkleFly 0.8s ease-out forwards;
+    }
+    @keyframes sparkleFly {
+      0%   { opacity: 1; transform: scale(1) translate(0,0); }
+      100% { opacity: 0; transform: scale(0) translate(var(--tx), var(--ty)); }
+    }
+
+    /* === Chat Header === */
+    #chat-header {
+      background: linear-gradient(270deg, #ff6ec4, #7873f5, #42e695, #ffe140, #ff6ec4);
+      background-size: 1000% 1000%;
+      animation: moveGradient 10s linear infinite;
+      color: #ffed4f; font-weight: bold;
+      padding: 12px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      font-family: "Comic Sans MS", sans-serif;
+      border-top-left-radius: 30px; border-top-right-radius: 30px;
+      font-size: large; cursor: grab;
+    }
+
+    #close-chat-btn {
+      background: rgba(255,255,255,0.2); border: none;
+      border-radius: 50%; width: 28px; height: 28px;
+      color: white; font-size: 16px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s; flex-shrink: 0; line-height: 1;
+    }
+    #close-chat-btn:hover { background: rgba(255,255,255,0.4); }
+
+    /* === Chat Body === */
     #chat-body {
       flex: 1; padding: 12px; overflow-y: auto;
       display: flex; flex-direction: column; gap: 8px; background: #fff;
     }
 
-    /* === Bubble — no wrapper, direct flex alignment === */
+    /* === Bubbles === */
     .message {
       padding: 10px 14px 6px 14px;
       border-radius: 22px;
@@ -67,22 +158,18 @@
       font-size: 1em; line-height: 1.5;
       box-shadow: 0 2px 5px rgba(0,0,0,0.12);
       position: relative;
-      display: flex;
-      flex-direction: column;
+      display: flex; flex-direction: column;
       max-width: 80%;
     }
-
     .message.user {
       align-self: flex-end;
       background: linear-gradient(135deg, #42e695, #3bb2b8);
-      color: #fff;
-      border-bottom-right-radius: 5px;
+      color: #fff; border-bottom-right-radius: 5px;
     }
     .message.bot {
       align-self: flex-start;
       background: linear-gradient(135deg, #7873f5, #a98df5);
-      color: white;
-      border-bottom-left-radius: 5px;
+      color: white; border-bottom-left-radius: 5px;
       padding-left: 28px;
     }
     .bot .icon { position: absolute; top: 8px; left: 8px; }
@@ -94,57 +181,33 @@
     .bot-content ul li::before { content: "•"; color: #ffed4f; font-weight: bold; margin-right: 6px; }
     .bot-content br { display: block; margin: 1px 0; }
 
-    /* === Bottom row inside bubble: time + icons === */
+    /* === Bubble footer === */
     .bubble-footer {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 5px;
-      margin-top: 4px;
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 5px; margin-top: 4px;
     }
-
     .msg-time {
-      font-size: 0.65em;
-      color: rgba(255,255,255,0.75);
-      font-family: "Comic Sans MS", sans-serif;
-      white-space: nowrap;
+      font-size: 0.65em; color: rgba(255,255,255,0.75);
+      font-family: "Comic Sans MS", sans-serif; white-space: nowrap;
     }
-
-    /* Copy and edit buttons — same colour as timestamp */
     .copy-btn, .edit-btn {
       background: none; border: none; cursor: pointer; padding: 0;
-      display: flex; align-items: center;
-      transition: opacity 0.2s, transform 0.15s;
+      display: flex; align-items: center; transition: opacity 0.2s, transform 0.15s;
     }
-    .copy-btn svg, .edit-btn svg {
-      width: 12px; height: 12px;
-      stroke: rgba(255,255,255,0.75);
-    }
-    .copy-btn:hover svg, .edit-btn:hover svg {
-      stroke: rgba(255,255,255,1);
-      transform: scale(1.2);
-    }
-
-    /* Edit button hidden by default, shows on bubble hover */
+    .copy-btn svg, .edit-btn svg { width: 12px; height: 12px; stroke: rgba(255,255,255,0.75); }
+    .copy-btn:hover svg, .edit-btn:hover svg { stroke: white; }
     .edit-btn { opacity: 0; transition: opacity 0.2s; }
     .message.user:hover .edit-btn { opacity: 1; }
 
-    /* === Inline edit textarea inside user bubble === */
+    /* === Inline edit === */
     .inline-edit-area {
-      display: none;
-      flex-direction: column;
-      gap: 6px;
-      margin-top: 6px;
+      display: none; flex-direction: column; gap: 6px; margin-top: 6px;
     }
     .inline-edit-area textarea {
-      background: rgba(255,255,255,0.2);
-      border: 1px solid rgba(255,255,255,0.5);
-      border-radius: 10px;
-      color: white;
-      font-family: "Comic Sans MS", sans-serif;
-      font-size: 0.95em;
-      padding: 6px 8px;
-      resize: none; outline: none; width: 100%;
+      background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.5);
+      border-radius: 10px; color: white;
+      font-family: "Comic Sans MS", sans-serif; font-size: 0.95em;
+      padding: 6px 8px; resize: none; outline: none; width: 100%;
     }
     .inline-edit-area textarea::placeholder { color: rgba(255,255,255,0.6); }
     .inline-edit-area .edit-btns { display: flex; gap: 6px; justify-content: flex-end; }
@@ -153,7 +216,7 @@
       font-family: "Comic Sans MS", sans-serif; font-size: 0.8em; cursor: pointer;
     }
     .edit-save   { background: rgba(255,255,255,0.3); color: white; }
-    .edit-cancel { background: rgba(0,0,0,0.15);      color: white; }
+    .edit-cancel { background: rgba(0,0,0,0.15); color: white; }
 
     /* === Typing indicator === */
     .typing-indicator { display: flex; align-items: center; gap: 8px; color: #ffffffcc; font-family: "Comic Sans MS", sans-serif; font-size: 0.9em; }
@@ -196,9 +259,14 @@
 </head>
 <body>
   <button id="chat-btn">💬</button>
+  <div id="chat-badge"></div>
+  <div id="sparkles"></div>
 
-  <div id="chat-window">
-    <div id="chat-header">Brightly (School Assistant)</div>
+  <div id="chat-window" class="hidden">
+    <div id="chat-header">
+      <span>✨ Brightly (School Assistant)</span>
+      <button id="close-chat-btn">✕</button>
+    </div>
     <div id="chat-body"></div>
     <div id="chat-input">
       <textarea id="user-input" placeholder="Ask something..."></textarea>
