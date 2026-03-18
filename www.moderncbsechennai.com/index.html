@@ -141,11 +141,16 @@
       background-size: 1000% 1000%;
       animation: moveGradient 10s linear infinite;
       color: #ffed4f; font-weight: bold;
-      padding: 12px 14px;
+      padding: 10px 12px;
       display: flex; align-items: center; justify-content: space-between;
       font-family: "Comic Sans MS", sans-serif;
       border-top-left-radius: 30px; border-top-right-radius: 30px;
-      font-size: large; cursor: grab;
+      font-size: 0.95rem; cursor: grab;
+      white-space: nowrap; overflow: hidden; gap: 8px;
+    }
+    #chat-header > span {
+      white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; flex: 1;
     }
 
     #close-chat-btn, #fullscreen-btn {
@@ -527,15 +532,11 @@
     const autoTimer = setTimeout(dismiss, 4500);
     intro.addEventListener("click", () => { clearTimeout(autoTimer); dismiss(); });
 
-    // Play sound on first interaction (browser policy) or auto after short delay
+    // Chrome policy: sound ONLY on user gesture (tap/click on intro screen)
     let soundPlayed = false;
-    function trySound() {
+    intro.addEventListener("click", () => {
       if (!soundPlayed) { soundPlayed = true; playIntroSound(); }
-    }
-    document.addEventListener("click",     trySound, { once: true });
-    document.addEventListener("touchstart", trySound, { once: true });
-    // Try auto after 200ms (works on some browsers without interaction)
-    setTimeout(() => { try { playIntroSound(); soundPlayed = true; } catch(e){} }, 200);
+    }, { once: true });
   })();
   </script>
 
