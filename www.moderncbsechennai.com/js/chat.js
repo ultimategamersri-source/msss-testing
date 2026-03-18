@@ -54,30 +54,97 @@ window.addEventListener("DOMContentLoaded", () => {
   const COPY_OK  = `<svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="stroke:rgba(255,255,255,0.9)"><polyline points="20 6 9 17 4 12"/></svg>`;
   const EDIT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
 
-  // ---- Sparkles -----------------------------------------------------------
-  const SPARKLE_COLORS = ["#ff6ec4","#7873f5","#42e695","#ffe140","#ff9ff3","#54a0ff"];
+  // ---- Sparkles & Fireworks ----------------------------------------------
+  const SPARKLE_COLORS = ["#ff6ec4","#7873f5","#42e695","#ffe140","#ff9ff3","#54a0ff","#ff9f43","#ee5a24"];
+  const canvas   = document.getElementById("fireworks-canvas");
+  const ctx      = canvas ? canvas.getContext("2d") : null;
+  let   fwParts  = [];
+  let   fwActive = false;
+
+  function resizeCanvas() {
+    if (!canvas) return;
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resizeCanvas();
+  window.addEventListener("resize", resizeCanvas);
+
+  function launchFirework(x, y) {
+    const count = 60 + Math.floor(Math.random() * 40);
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const speed = 2 + Math.random() * 5;
+      fwParts.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        alpha: 1,
+        color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
+        size: 2 + Math.random() * 3,
+        decay: 0.012 + Math.random() * 0.01,
+      });
+    }
+  }
+
+  function animateFireworks() {
+    if (!ctx || !canvas) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    fwParts = fwParts.filter(p => p.alpha > 0.01);
+    fwParts.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      p.vy += 0.06; // gravity
+      p.vx *= 0.98;
+      p.alpha -= p.decay;
+      ctx.globalAlpha = Math.max(0, p.alpha);
+      ctx.fillStyle   = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    if (fwParts.length > 0) requestAnimationFrame(animateFireworks);
+    else {
+      fwActive = false;
+      if (canvas) canvas.classList.remove("active");
+    }
+  }
+
+  function startFireworks() {
+    if (!canvas || !ctx) return;
+    canvas.classList.add("active");
+    fwActive = true;
+    const w = window.innerWidth, h = window.innerHeight;
+    // Launch 6 fireworks at random positions across screen
+    const positions = [
+      [w * 0.2, h * 0.3], [w * 0.5, h * 0.2], [w * 0.8, h * 0.3],
+      [w * 0.3, h * 0.5], [w * 0.7, h * 0.4], [w * 0.5, h * 0.35],
+    ];
+    positions.forEach(([x, y], i) => {
+      setTimeout(() => launchFirework(x, y), i * 180);
+    });
+    animateFireworks();
+    setTimeout(() => { fwParts = []; }, 4000);
+  }
 
   function shootSparkles() {
     sparklesEl.innerHTML = "";
-    for (let i = 0; i < 14; i++) {
-      const s   = document.createElement("div");
+    for (let i = 0; i < 16; i++) {
+      const s = document.createElement("div");
       s.className = "sparkle";
-      const angle = (i / 14) * 360;
-      const dist  = 40 + Math.random() * 40;
+      const angle = (i / 16) * 360;
+      const dist  = 50 + Math.random() * 50;
       const tx    = Math.cos(angle * Math.PI / 180) * dist + "px";
       const ty    = Math.sin(angle * Math.PI / 180) * dist + "px";
       s.style.cssText = `
-        left: ${30 + Math.random() * 20}px;
-        top:  ${30 + Math.random() * 20}px;
+        left: ${25 + Math.random() * 30}px; top: ${25 + Math.random() * 30}px;
         background: ${SPARKLE_COLORS[i % SPARKLE_COLORS.length]};
         --tx: ${tx}; --ty: ${ty};
-        animation-delay: ${Math.random() * 0.2}s;
-        width: ${4 + Math.random() * 6}px;
-        height: ${4 + Math.random() * 6}px;
+        animation-delay: ${Math.random() * 0.25}s;
+        width: ${4 + Math.random() * 7}px; height: ${4 + Math.random() * 7}px;
       `;
       sparklesEl.appendChild(s);
     }
-    setTimeout(() => sparklesEl.innerHTML = "", 1000);
+    setTimeout(() => sparklesEl.innerHTML = "", 1200);
   }
 
   // ---- Badge --------------------------------------------------------------
@@ -97,7 +164,15 @@ window.addEventListener("DOMContentLoaded", () => {
     chatWindow.classList.remove("hidden", "closing");
 
     if (isFirstVisit) {
+      // Sparkles from button + full fireworks across screen
       shootSparkles();
+      startFireworks();
+      chatWindow.classList.add("opening");
+      chatWindow.addEventListener("animationend", () => {
+        chatWindow.classList.remove("opening");
+      }, { once: true });
+    } else {
+      // Normal open — quick spring in
       chatWindow.classList.add("opening");
       chatWindow.addEventListener("animationend", () => {
         chatWindow.classList.remove("opening");
