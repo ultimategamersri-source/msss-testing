@@ -11,7 +11,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const header        = document.getElementById("chat-header");
   const closeChatBtn  = document.getElementById("close-chat-btn");
   const chatBadge     = document.getElementById("chat-badge");
-  const sparklesEl    = document.getElementById("sparkles");
+  // fireworks handled via canvas
 
   if (!chatBtn || !chatWindow || !sendBtn || !userInput || !chatBody || !header) {
     console.error("[chat.js] Missing DOM elements."); return;
@@ -70,17 +70,17 @@ window.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("resize", resizeCanvas);
 
   function launchFirework(x, y) {
-    const count = 60 + Math.floor(Math.random() * 40);
+    const count = 120 + Math.floor(Math.random() * 60);
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2;
-      const speed = 2 + Math.random() * 5;
+      const speed = 4 + Math.random() * 10;
       fwParts.push({
         x, y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         alpha: 1,
         color: SPARKLE_COLORS[Math.floor(Math.random() * SPARKLE_COLORS.length)],
-        size: 2 + Math.random() * 3,
+        size: 3 + Math.random() * 5,
         decay: 0.012 + Math.random() * 0.01,
       });
     }
@@ -97,6 +97,8 @@ window.addEventListener("DOMContentLoaded", () => {
       p.alpha -= p.decay;
       ctx.globalAlpha = Math.max(0, p.alpha);
       ctx.fillStyle   = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur  = 12;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
       ctx.fill();
@@ -116,36 +118,18 @@ window.addEventListener("DOMContentLoaded", () => {
     const w = window.innerWidth, h = window.innerHeight;
     // Launch 6 fireworks at random positions across screen
     const positions = [
-      [w * 0.2, h * 0.3], [w * 0.5, h * 0.2], [w * 0.8, h * 0.3],
-      [w * 0.3, h * 0.5], [w * 0.7, h * 0.4], [w * 0.5, h * 0.35],
+      [w * 0.15, h * 0.25], [w * 0.5,  h * 0.15], [w * 0.85, h * 0.25],
+      [w * 0.25, h * 0.45], [w * 0.75, h * 0.40], [w * 0.5,  h * 0.30],
+      [w * 0.35, h * 0.20], [w * 0.65, h * 0.20], [w * 0.5,  h * 0.50],
     ];
     positions.forEach(([x, y], i) => {
-      setTimeout(() => launchFirework(x, y), i * 180);
+      setTimeout(() => launchFirework(x, y), i * 150);
     });
     animateFireworks();
     setTimeout(() => { fwParts = []; }, 4000);
   }
 
-  function shootSparkles() {
-    sparklesEl.innerHTML = "";
-    for (let i = 0; i < 16; i++) {
-      const s = document.createElement("div");
-      s.className = "sparkle";
-      const angle = (i / 16) * 360;
-      const dist  = 50 + Math.random() * 50;
-      const tx    = Math.cos(angle * Math.PI / 180) * dist + "px";
-      const ty    = Math.sin(angle * Math.PI / 180) * dist + "px";
-      s.style.cssText = `
-        left: ${25 + Math.random() * 30}px; top: ${25 + Math.random() * 30}px;
-        background: ${SPARKLE_COLORS[i % SPARKLE_COLORS.length]};
-        --tx: ${tx}; --ty: ${ty};
-        animation-delay: ${Math.random() * 0.25}s;
-        width: ${4 + Math.random() * 7}px; height: ${4 + Math.random() * 7}px;
-      `;
-      sparklesEl.appendChild(s);
-    }
-    setTimeout(() => sparklesEl.innerHTML = "", 1200);
-  }
+  // shootSparkles replaced by startFireworks()
 
   // ---- Badge --------------------------------------------------------------
   function showBadge(n) {
